@@ -1,2 +1,11 @@
-# Papersharing
-for parper sharing
+1. InstDisc 使用了个体判别作为代理任务，把每个个体看作一个类别进行对比学习，使用memory bank 存储负样本。目标函数是NCE
+2. InvaSpread 最基本的对比学习方法
+3. CPC不同与前两种判别式对比学习，采用了生成式进行对比，训练编码器。
+4. CMC 使用多视角对输入图片进行增强
+5.MoCo v1， 采用队列存储大量负样本，以及使用动量编码器保证一致性。
+   MoCo v2, 在1代的基础上吸取SimCLR的优点用了更多的数据增强，在编码器后加入了MLP层
+    MoCo v3， 将编码器换成由Transformer，效果一般。
+6.SimCLR 使用更多数据增强，得出color+crop效果最佳，并在编码器后使用MLP层增加效果。
+7. SWaV将聚类和对比学习进行结合，BYOL完全不使用负样本（最终结论是BN进行了求均值方差起作用，是一种隐式的负样本）
+
+NCE loss 把样本分为正样本和负样本两类(同时考虑了正负样本)， infoNCE 只考虑与query匹配的key这一组正样本对，不考虑负样本。
