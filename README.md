@@ -1,2 +1,6 @@
-# Papersharing
-for parper sharing
+# NCSN
+这篇文章的主要贡献是提出了一种新的扩散生成模型，它通过使用score matching方法来估计数据分布的梯度，然后用退火Langevin动力学来生成样本。
+
+主要难点：如何在低密度区域进行正确的score估计；
+
+idea：在不同的区域添加不同的噪声，即在低密度区域添加较大的噪声，在高密度区域添加较小的噪声
