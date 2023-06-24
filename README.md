@@ -1,3 +1,3 @@
-# Papersharing
-for parper sharing
-Stability versus Complexity in Ecosystems
+# Stability versus Complexity in Lotka-Volterra Ecosystems
+
+
