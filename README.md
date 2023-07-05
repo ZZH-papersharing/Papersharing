@@ -1,3 +1,3 @@
-# Stability versus Complexity in Lotka-Volterra Ecosystems
+# Stability vs. Complexity in Lotka-Volterra Ecosystems
 
 
