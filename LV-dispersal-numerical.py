@@ -8,20 +8,20 @@ class NetworkParameter(Enum):
     """
     Define the name of the network parameters.
     """
-    species = 'species'  # number of species
-    patches = 'patches'  # number of patches
+    species = r'species: $S=$'  # number of species
+    patches = r'patches: $n=$'  # number of patches
     randomSeed = 'randomSeed'  # seed of random numbers
-    m = 'growth rate'  # intra-specific interaction strength
+    m = r'growth rate: $m=$'  # intra-specific interaction strength
     n0 = 'initial N'  # initial N
     initial = 'initial mode'  # initial mode
-    var_n0 = 'var_n0'  # the variance of N0
-    dispersal = 'dispersal'  # dispersal rate
+    sgm_n0 = 'sgm_n0'  # the variance of N0
+    dispersal = r'dispersal: $d=$'  # dispersal rate
     dt = 'dt'  # time interval
     maxIteration = 'maxIteration'  # max iteration time
     maxError = 'maxError'  # max error in iteration
-    connectance = 'connectance'  # Proportion of realized interactions among all possible ones
-    var_alpha = 'var_alpha'  # the variance of the distribution N(0, var) of alpha_ij
-    var_qx = 'var_qx'  # the variance of the distribution N(1, var) of q_ij
+    connectance = r'connectance: $c=$'  # Proportion of realized interactions among all possible ones
+    sgm_alpha = r'$\sigma _{\alpha }$'  # the variance of the distribution N(0, var) of alpha_ij
+    sgm_qx = r'$\sigma _{q }$'  # the variance of the distribution N(1, var) of q_ij
 
 
 class DispersalNetwork:
@@ -35,9 +35,10 @@ class DispersalNetwork:
         self.m = config['m']  # intraspecific interaction strength
         self.n0 = config['n0']  # initial N
         self.initial = config['initial']  # initial mode
-        self.var_n0 = config['var_n0']
-        self.var_alpha = config['var_alpha']
-        self.var_qx = config['var_qx']
+        self.miu_n0 = config['miu_n0']
+        self.sgm_n0 = config['sgm_n0']
+        self.sgm_alpha = config['sgm_alpha']
+        self.sgm_qx = config['sgm_qx']
         self.d = config['dispersal']  # dispersal rate
         self.dt = config['dt']  # time interval
         self.maxIter = config['maxIteration']  # max iteration time
@@ -69,7 +70,7 @@ class DispersalNetwork:
         if self.initial == 'fixed':
             # let (1,1,...,1)T as the fixed point in non-dispersal situation
             self.M = np.matmul(self.A, -1*np.ones(self.S * self.n))
-            self.N0 = np.random.normal(1, self.var_n0, size=self.S * self.n)
+            self.N0 = np.random.normal(self.miu_n0, self.sgm_n0, size=self.S * self.n)
         elif self.initial == 'random':
             self.M = self.m * np.ones(self.S * self.n)
             self.N0 = self.n0 * np.ones(self.S * self.n)
@@ -82,38 +83,40 @@ class DispersalNetwork:
         """
 
         if mode == 1:
-            A0 = np.random.normal(0, self.var_alpha, size=(self.S, self.S))
+            A_std = np.random.normal(0, self.sgm_alpha, size=(self.S, self.S))
             Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
-            A_std = np.multiply(A0, Connect)
-            A_std -= np.diag(np.diag(A_std) + 1)
-            # A_std = -1 * np.identity(self.S)
-            # for i in range(self.S):
-            #     for j in range(self.S):
-            #         if i != j:
-            #             if np.random.random() < self.c:
-            #                 A_std[i, j] = np.random.normal(0, self.var_alpha)
-            # print(A_std0 - A_std)
-
-            # print(A_std == 0)
-            # print(sum(A_std==0) / self.S)
-            # print(A_std)
-            #
-            # fig, ax = plt.subplots()
-            # im, cbar = heat
-            # im = ax.imshow(A_std)
-            # for i in range(self.S):
-            #     for j in range(self.S):
-            #         text = ax.text(j, i, A_std[i, j],
-            #                        ha="center", va="center", color="w")
-            # fig.tight_layout()
-            # plt.show()
-            # plt.imshow(A_std)
-            # plt.hist(A_std)
 
             lst_A = []
             for i in range(self.n):
-                same = np.random.normal(1, self.var_qx, size=(self.S, self.S))
-                lst_A.append(np.multiply(same, A_std))
+                same = np.random.normal(0, self.sgm_qx, size=(self.S, self.S))
+                Ax = (A_std + same) / np.sqrt(1 + (self.sgm_qx / self.sgm_alpha)**2)
+                Ax = np.multiply(Ax, Connect)
+                Ax -= np.diag(np.diag(Ax) + 1)
+
+                # print('mean:', np.mean(np.mean(Ax)))
+                # print('var:', np.var(Ax))
+                # print(Ax)
+                # B1, B2 = Ax, A_std
+                # arr = B1.reshape(1, -1)[0]
+                # _=plt.hist(arr[arr != 0], range=(-0.5, 0.5), bins=100, weights=None)
+                # plt.Axes().set_xlim(xlim=(-0.5, 0.5))
+                # plt.show()
+
+                # print('rho:', np.corrcoef(np.concatenate([B1.reshape((1, -1)), B2.reshape((1, -1))], axis=0)))
+
+                # fig, ax = plt.subplots()
+                # im, cbar = heat
+                # im = ax.imshow(A_std)
+                # for i in range(self.S):
+                #     for j in range(self.S):
+                #         text = ax.text(j, i, A_std[i, j],
+                #                        ha="center", va="center", color="w")
+                # fig.tight_layout()
+                # plt.show()
+                # plt.imshow(A_std)
+                # plt.hist(A_std)
+
+                lst_A.append(Ax)
                 # lst_A.append(A_std)
             # print(lst_A[1] - lst_A[0])
 
@@ -125,13 +128,13 @@ class DispersalNetwork:
                 for j in range(self.S):
                     if i < j:
                         if np.random.random() < self.c:
-                            A_std[i, j] = np.random.normal(0, self.var_alpha) / 5
+                            A_std[i, j] = np.random.normal(0, self.sgm_alpha) / 5
                     elif i > j:
                         A_std[i, j] = -A_std[j, i]
 
             lst_A = []
             for i in range(self.n):
-                same = np.random.normal(1, self.var_qx, size=(self.S, self.S))
+                same = np.random.normal(1, self.sgm_qx, size=(self.S, self.S))
                 lst_A.append(np.multiply(same, A_std))
                 # lst_A.append(A_std)
 
@@ -271,6 +274,8 @@ class DispersalNetwork:
         print(f'Stable: {self.stable}')
         print(f'Reason: {self.unstableReason}')
 
+
+
         # theoretical fixed point
         # Xf = np.linalg.solve(self.A, -self.M)
         # print(f'xf:{Xf}')
@@ -300,6 +305,8 @@ class DispersalNetwork:
         ax.set_xlabel('iteration')
         ax.set_ylabel('N')
 
+
+
     def plotParam(self, ax: plt.Axes):
         """
         Display the network parameters.
@@ -307,23 +314,23 @@ class DispersalNetwork:
         """
         params = f'''
             {NetworkParameter.randomSeed.value}: {self.seed}
-            {NetworkParameter.species.value}: {self.S}
-            {NetworkParameter.patches.value}:{self.n}
-            {NetworkParameter.dispersal.value}: {self.d}
-            {NetworkParameter.connectance.value}: {self.c}
-            {NetworkParameter.var_alpha.value}: {self.var_alpha}
-            {NetworkParameter.var_qx.value}: {self.var_qx}\n
+            {NetworkParameter.species.value}{self.S}
+            {NetworkParameter.patches.value}{self.n}
+            {NetworkParameter.dispersal.value}{self.d}
+            {NetworkParameter.connectance.value}{self.c}
+            {NetworkParameter.sgm_alpha.value}: {self.sgm_alpha}
+            {NetworkParameter.sgm_qx.value}: {self.sgm_qx}\n
             {NetworkParameter.initial.value}: {self.initial}'''
 
         if self.initial == 'random':
             params += f'''
-            {NetworkParameter.m.value}: {self.m}
+            {NetworkParameter.m.value}{self.m}
             {NetworkParameter.n0.value}: {self.n0}
             '''
         elif self.initial == 'fixed':
-            params += f'''
-            M = - AN
-            N0 ~ N(1, {self.var_n0})
+            params += rf'''
+            $M = - AN$
+            $N_{0} \sim N({self.miu_n0}, {self.sgm_n0})$
             '''
 
         ax.set_title('Parameter List')
@@ -352,9 +359,9 @@ class NetworkManager:
     """
     This class works as an interface to compute networks.
     """
-    def __init__(self, species=1000, patches=1, randomSeed=1, m=1, n0=1.1, initial='fixed', var_n0 = 0.1,
-                 dispersal=0, dt=1e-2, maxIteration=2e3, maxError=1e-4,
-                 connectance=0.1, var_alpha=0.01, var_qx=0, change=NetworkParameter.randomSeed):
+    def __init__(self, species=100, patches=5, randomSeed=1, m=1, n0=1, initial='fixed', miu_n0=1, sgm_n0=0.1,
+                 dispersal=10, dt=1e-2, maxIteration=6e3, maxError=1e-4,
+                 connectance=0.1, sgm_alpha=0.1, sgm_qx=0.1, change=NetworkParameter.randomSeed):
         """
         The parameters of the network.
         :param species: number of species
@@ -364,14 +371,14 @@ class NetworkManager:
         :param n0: initial N
         :param initial: initial mode.
             'random'--randomly spawn A and M; 'fixed'--spawn M depending on A to get fixed point (1,1,...,1)T
-        :param var_n0: the variance of N0
+        :param sgm_n0: the variance of N0
         :param dispersal: dispersal rate
         :param dt: time interval
         :param maxIteration: max iteration time
         :param maxError: max error in iteration
         :param connectance:  Proportion of realized interactions among all possible ones
-        :param var_alpha: the variance of the distribution N(0, var) of alpha_ij
-        :param var_qx: the variance of the distribution N(1, var) of q_ij
+        :param sgm_alpha: the variance of the distribution N(0, var) of alpha_ij
+        :param sgm_qx: the variance of the distribution N(1, var) of q_ij
         """
         self.config = {'randomSeed': randomSeed,
                        'species': species,
@@ -380,13 +387,14 @@ class NetworkManager:
                        'm': m,
                        'n0': n0,
                        'initial': initial,
-                       'var_n0': var_n0,
+                       'miu_n0': miu_n0,
+                       'sgm_n0': sgm_n0,
                        'dt': dt,
                        'maxIteration': maxIteration,
                        'maxError': maxError,
                        'connectance': connectance,
-                       'var_alpha': var_alpha,
-                       'var_qx': var_qx,
+                       'sgm_alpha': sgm_alpha,
+                       'sgm_qx': sgm_qx,
                        'change': change}
 
     def changeParam(self, param, start, end, step):
