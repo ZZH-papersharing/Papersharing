@@ -16,12 +16,19 @@ class NetworkParameter(Enum):
     initial = 'initial mode'  # initial mode
     sgm_n0 = 'sgm_n0'  # the variance of N0
     dispersal = r'dispersal: $d=$'  # dispersal rate
+    Adiag = 'intraspecific interaction'
+
+    method = 'computation method'  # numerical computation method
     dt = 'dt'  # time interval
     maxIteration = 'maxIteration'  # max iteration time
     maxError = 'maxError'  # max error in iteration
     connectance = r'connectance: $c=$'  # Proportion of realized interactions among all possible ones
-    sgm_alpha = r'$\sigma _{\alpha }$'  # the variance of the distribution N(0, var) of alpha_ij
-    sgm_qx = r'$\sigma _{q }$'  # the variance of the distribution N(1, var) of q_ij
+    sgm_alpha = r'$\sigma _{\alpha }=$'  # the variance of the distribution N(0, var) of alpha_ij
+    sgm_qx = r'$\sigma _{q }$='  # the variance of the distribution N(1, var) of q_ij
+    rho = r'correlation: $\rho=$'  # correlation between patches
+    n_e = r'$n_{e}=$'  # the effective number of ecologically independent patches in the meta-ecosystem
+    left1 = r'$\sigma \sqrt{c \left (S-1 \right ) } =$'  # the left term of May's inequality
+    left2 = r'$\sigma \sqrt{c \left (S-1 \right ) /n_{e}  } =$'  # the left term of May's inequality
 
 
 class DispersalNetwork:
@@ -40,6 +47,9 @@ class DispersalNetwork:
         self.sgm_alpha = config['sgm_alpha']
         self.sgm_qx = config['sgm_qx']
         self.d = config['dispersal']  # dispersal rate
+        self.Adiag = config['Adiag']
+
+        self.method = config['method']
         self.dt = config['dt']  # time interval
         self.maxIter = config['maxIteration']  # max iteration time
         self.maxError = config['maxError']  # max error in iteration
@@ -47,6 +57,7 @@ class DispersalNetwork:
 
         self.N0 = None  # initial N
         self.M, self.A, self.D = None, None, None
+        self.rho, self.n_e, self.left = None, None, None  # correlation
         self.Nf = None  # fixed point
         self.J = None  # Jacobian matrix
         self.eigval = None  # eigenvalues of Jacobian matrix
@@ -83,15 +94,20 @@ class DispersalNetwork:
         """
 
         if mode == 1:
+            self.rho = 1 / np.sqrt(1 + (self.sgm_qx / self.sgm_alpha)**2)
+            self.n_e = self.n / (1 + (self.n - 1) * self.rho)
+            self.left1 = self.sgm_alpha * np.sqrt(self.c * (self.S - 1))
+            self.left2 = self.sgm_alpha * np.sqrt(self.c * (self.S - 1) / self.n_e)
+            # print(f'left1: {self.left1}')
+
             A_std = np.random.normal(0, self.sgm_alpha, size=(self.S, self.S))
             Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
-
             lst_A = []
             for i in range(self.n):
                 same = np.random.normal(0, self.sgm_qx, size=(self.S, self.S))
-                Ax = (A_std + same) / np.sqrt(1 + (self.sgm_qx / self.sgm_alpha)**2)
+                Ax = (A_std + same) * self.rho
                 Ax = np.multiply(Ax, Connect)
-                Ax -= np.diag(np.diag(Ax) + 1)
+                Ax -= np.diag(np.diag(Ax) + self.Adiag)
 
                 # print('mean:', np.mean(np.mean(Ax)))
                 # print('var:', np.var(Ax))
@@ -174,41 +190,59 @@ class DispersalNetwork:
 
         return N + dt * (k1 + 2*k2 + 2*k3 + k4) / 6
 
-    def findFixed(self):
+    def findFixed(self, mode=2):
         """
         Find the fixed point.Record species numbers N in every 2 steps.
         Stop computing if iteration exceeds maxIteration.
         :return:
         """
-        N_old = self.N0
-        N_new = N_old
-        # if all elements in |N_new - N_old| are < maxError, regard the point as a fixed point
-        iteration = 0
-        while True:  # sum(abs(N_new - N_old) > self.maxError) > 0:
-            if iteration % 2 == 0:
-                self.xlst.append(iteration)
-                self.N_lst.append(N_new.reshape(1, -1))
+        if mode == 1:
+            N_old = self.N0
+            N_new = N_old
+            # if all elements in |N_new - N_old| are < maxError, regard the point as a fixed point
+            iteration = 0
+            while True:  # sum(abs(N_new - N_old) > self.maxError) > 0:
+                if iteration % 2 == 0:
+                    self.xlst.append(iteration)
+                    self.N_lst.append(N_new.reshape(1, -1))
 
-            if iteration % 1000 == 0:
-                print(iteration)
+                if iteration % 1000 == 0:
+                    print(iteration)
 
-            temp = N_new
-            N_new = self.RK4(N_old, self.dt)
-            N_old = temp
-            iteration += 1
+                temp = N_new
+                N_new = self.RK4(N_old, self.dt)
+                N_old = temp
+                iteration += 1
 
-            # if some Ni <= 0, the fixed point does not exist
-            if sum(N_new <= 0) > 0:
-                # N_new = None
-                self.unstableReason = 'some specie(s) extinguish'
-                break
-            # Stop if iteration time exceeds the maximum
-            if iteration > self.maxIter:
-                # N_new = None
-                self.unstableReason = 'iteration overflow'
-                break
+                # if some Ni <= 0, the fixed point does not exist
+                if sum(N_new <= 0) > 0:
+                    # N_new = None
+                    self.unstableReason = 'some specie(s) extinguish'
+                    break
+                # Stop if iteration time exceeds the maximum
+                if iteration > self.maxIter:
+                    # N_new = None
+                    self.unstableReason = 'iteration overflow'
+                    break
 
-        self.Nf = N_new
+            self.Nf = N_new
+
+        elif mode == 2:
+            solver = sp.integrate.RK45(self.ode, t0=0, y0=self.N0, t_bound=self.dt*self.maxIter, max_step=10*self.dt)
+            for i in range(int(self.maxIter)):
+                if i % 2 == 0:
+                    self.xlst.append(solver.t / self.dt)
+                    self.N_lst.append(solver.y.reshape(1, -1))
+
+                if i % 500 == 0:
+                    print(i)
+
+                solver.step()
+
+                if solver.status == 'finished':
+                    break
+
+            self.Nf = solver.y
 
     def calc_jacobian(self, N_fixed: None | np.ndarray = None):
         """
@@ -240,28 +274,16 @@ class DispersalNetwork:
             self.stable = False
             self.unstableReason = 'positive real parts of eigenvalues'
 
-    def compute(self, N_fixed: None | np.ndarray = None):
+    def compute(self):
         """
         compute the fixed point
         :return:
         """
-        if N_fixed is None:
-            self.spawn()
-            self.findFixed()
-            self.calc_jacobian()
-            self.calc_eigenvalue()
-        else:
-            self.spawn()
-            self.calc_jacobian(N_fixed)
-            self.calc_eigenvalue()
 
-        # RK45 module, but have some problem
-        # solver = sp.integrate.RK45(self.ode, t0=0, y0=self.N0, t_bound=10, max_step=self.maxIter)
-        # for i in range(int(self.maxIter)):
-        #     solver.step()
-        #     if solver.status == 'finished':
-        #         break
-        # self.Nf = solver.y.T
+        self.spawn()
+        self.findFixed(mode=self.method)
+        self.calc_jacobian()
+        self.calc_eigenvalue()
 
     def disp(self):
         """
@@ -274,11 +296,38 @@ class DispersalNetwork:
         print(f'Stable: {self.stable}')
         print(f'Reason: {self.unstableReason}')
 
-
-
         # theoretical fixed point
         # Xf = np.linalg.solve(self.A, -self.M)
         # print(f'xf:{Xf}')
+
+    def plotFlow(self):
+        """
+        Plot the flow of species i from patch k to patch l
+        :return:
+        """
+        for i in range(self.S):
+            Ni_pch = self.Nf[range(i, self.n*self.S, self.S)]
+            Ni_spc = np.concatenate([Ni_pch.reshape(1, -1)]*self.n, axis=0)
+            flow = self.d * (Ni_spc.T - Ni_spc)
+            flowratio = (flow - np.min(flow)) / (np.max(flow) - np.min(flow))
+
+            to_plot = flow
+            fig, ax = plt.subplots(1, 2, figsize=(9, 5))
+            ax1 = ax[1]
+            im = ax1.imshow(to_plot)
+            cbar = ax1.figure.colorbar(im, ax=ax)
+            for k in range(self.n):
+                for l in range(self.n):
+                    text = ax1.text(l, k, round(to_plot[k, l], 2),
+                                   ha="center", va="center", color="w")
+            # fig.tight_layout()
+            plt.xlabel('Arrival Patch')
+            plt.ylabel('Departure Patch')
+            plt.title(f'Flow of species #{i}')
+
+            self.plotParam(ax[0])
+
+            plt.show()
 
     def ploteigval(self, ax: plt.Axes):
         """
@@ -293,6 +342,8 @@ class DispersalNetwork:
         ax.set_title('Eigenvalues of Jacobian matrix')
         ax.set_xlabel('Real')
         ax.set_ylabel('Imaginary')
+        ax.set_xlim(-20, 5)
+        ax.set_ylim(-10, 10)
         ax.axvline(x=x_max, ls='--', c='r')
 
     def plotN(self, ax: plt.Axes):
@@ -305,8 +356,6 @@ class DispersalNetwork:
         ax.set_xlabel('iteration')
         ax.set_ylabel('N')
 
-
-
     def plotParam(self, ax: plt.Axes):
         """
         Display the network parameters.
@@ -318,8 +367,12 @@ class DispersalNetwork:
             {NetworkParameter.patches.value}{self.n}
             {NetworkParameter.dispersal.value}{self.d}
             {NetworkParameter.connectance.value}{self.c}
-            {NetworkParameter.sgm_alpha.value}: {self.sgm_alpha}
-            {NetworkParameter.sgm_qx.value}: {self.sgm_qx}\n
+            {NetworkParameter.sgm_alpha.value}{self.sgm_alpha}
+            {NetworkParameter.sgm_qx.value}{self.sgm_qx}
+            {NetworkParameter.rho.value}{round(self.rho, 2)}
+            {NetworkParameter.n_e.value}{round(self.n_e, 2)}
+            {NetworkParameter.left1.value}{round(self.left1, 2)}
+            {NetworkParameter.left2.value}{round(self.left2, 2)}\n
             {NetworkParameter.initial.value}: {self.initial}'''
 
         if self.initial == 'random':
@@ -330,21 +383,33 @@ class DispersalNetwork:
         elif self.initial == 'fixed':
             params += rf'''
             $M = - AN$
-            $N_{0} \sim N({self.miu_n0}, {self.sgm_n0})$
+            $N_{0} \sim N({self.miu_n0}, {self.sgm_n0} ^{2})$
             '''
+
+        params += f'''
+            {NetworkParameter.Adiag.value}:\n\t''' + \
+            r'        $m_{intra}=$' + \
+            f'{self.Adiag}'
+
+        method = {1: "personal RK45", 2: "scipy.integrate.RK45"}[self.method]
+        params += f'''
+            {NetworkParameter.method.value}:
+                {method}'''
 
         ax.set_title('Parameter List')
         ax.set_xlim(-10, 10)
-        ax.set_ylim(-10, 10)
+        ax.set_ylim(-6, 0)
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
-        ax.annotate(params, (-10, -2), textcoords='offset points', fontsize=11)
+        ax.annotate(params, (-10, -5.5), textcoords='offset points', fontsize=11)
 
     def plotboth(self):
         """
         plot: N, eigenvalues, parameters
         :return:
         """
+        # self.plotFlow()
+
         fig, axs = plt.subplots(1, 3, figsize=(15, 6),
                                 gridspec_kw={'width_ratios': [1.5, 1.5, 0.8], 'left': 0.07, 'right': 0.96})
         plt.subplots_adjust(wspace=0.3)
@@ -359,9 +424,9 @@ class NetworkManager:
     """
     This class works as an interface to compute networks.
     """
-    def __init__(self, species=100, patches=5, randomSeed=1, m=1, n0=1, initial='fixed', miu_n0=1, sgm_n0=0.1,
-                 dispersal=10, dt=1e-2, maxIteration=6e3, maxError=1e-4,
-                 connectance=0.1, sgm_alpha=0.1, sgm_qx=0.1, change=NetworkParameter.randomSeed):
+    def __init__(self, species=100, patches=20, randomSeed=1, m=1, n0=1, initial='fixed', miu_n0=1, sgm_n0=0.05,
+                 dispersal=8/19, dt=1e-2, maxIteration=4e3, maxError=1e-4, method=2, Adiag=2,
+                 connectance=0.3, sgm_alpha=1, sgm_qx=100, change=NetworkParameter.randomSeed):
         """
         The parameters of the network.
         :param species: number of species
@@ -384,6 +449,7 @@ class NetworkManager:
                        'species': species,
                        'patches': patches,
                        'dispersal': dispersal,
+                       'Adiag': Adiag,
                        'm': m,
                        'n0': n0,
                        'initial': initial,
@@ -395,6 +461,7 @@ class NetworkManager:
                        'connectance': connectance,
                        'sgm_alpha': sgm_alpha,
                        'sgm_qx': sgm_qx,
+                       'method': method,
                        'change': change}
 
     def changeParam(self, param, start, end, step):
@@ -431,7 +498,7 @@ class NetworkManager:
         """
         Nf = np.ones(self.config['species'] * self.config['patches'])
         net = DispersalNetwork(self.config)
-        net.compute(Nf)
+        net.compute()
         fig, axs = plt.subplots()
         net.ploteigval(axs)
         plt.show()
