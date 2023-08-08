@@ -291,14 +291,14 @@ class DirectionalPreferenceNetwork:
 
         elif mode == 2:
             solver = sp.integrate.RK45(self.ode_spRK4, t0=0, y0=np.concatenate([self.N0, self.Alpha0]),
-                                       t_bound=self.dt * self.maxIter, max_step=10*self.dt)
+                                       t_bound=self.dt * self.maxIter, max_step=10 * self.dt)
             for i in range(int(self.maxIter)):
                 if i % 2 == 0:
                     self.iter_lst.append(solver.t / self.dt)
                     self.N_lst.append(solver.y[: self.S * self.n].reshape(1, -1))
                     self.Alpha_lst.append(solver.y[self.S * self.n:].reshape(1, -1))
 
-                if i % 50 == 0:
+                if i % 1000 == 0:
                     print(i)
 
                 solver.step()
@@ -347,49 +347,7 @@ class DirectionalPreferenceNetwork:
         print(f'N_f: {self.N_f}')
         print(f'Alpha_f: {self.Alpha_f}')
 
-    def plotFlow(self, idx: int):
-        """
-        Plot the flow of species i from patch k to patch l
-        :return:
-        """
-        to_plot = self.flow[idx]
-        fig = plt.figure(figsize=(9, 5))
-        ax = fig.subplots(1, 2)
-        ax1 = ax[1]
-        im = ax1.imshow(to_plot)
-        cbar = ax1.figure.colorbar(im, ax=ax)
-        for k in range(self.n):
-            for l in range(self.n):
-                text = ax1.text(l, k, round(to_plot[k, l], 2),
-                                ha="center", va="center", color="w")
-        # fig.tight_layout()
-        plt.xlabel('Arrival Patch')
-        plt.ylabel('Departure Patch')
-        plt.title(f'Flow of species #{idx}')
-
-        self.plotParam(ax[0])
-
-    def plotN(self, ax: plt.Axes):
-        """
-        plot N vs. iterations
-        :return:
-        """
-        ax.plot(self.iter_lst, np.concatenate(self.N_lst, axis=0))
-        ax.set_title(f'Number of species vs. iteration times')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('N')
-
-    def plotAlpha(self, ax: plt.Axes):
-        """
-        plot N vs. iterations
-        :return:
-        """
-        ax.plot(self.iter_lst, np.concatenate(self.Alpha_lst, axis=0))
-        ax.set_title(f'alpha vs. iteration times')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('alpha')
-
-    def plotParam(self, ax: plt.Axes):
+    def plotParam(self):
         """
         Display the network parameters.
         :return:
@@ -431,6 +389,8 @@ class DirectionalPreferenceNetwork:
             {NetParam.method.value}:
                 {method}'''
 
+        fig: plt.Figure = plt.figure(figsize=(3, 6))
+        ax: plt.Axes = fig.subplots()
         ax.set_title('Parameter List')
         ax.set_xlim(-10, 10)
         ax.set_ylim(-6, 0)
@@ -439,32 +399,91 @@ class DirectionalPreferenceNetwork:
         ax.annotate(params, (-10, -5.5), textcoords='offset points', fontsize=10)
 
     def plotNandAlpha(self):
-        fig = plt.figure(figsize=(15, 6))
-        axs = fig.subplots(1, 3,
-                           gridspec_kw={'width_ratios': [1.5, 1.5, 0.8], 'left': 0.07, 'right': 0.96})
-        plt.subplots_adjust(wspace=0.3)
-        self.plotN(axs[0])
-        self.plotAlpha(axs[1])
-        # self.ploteigval(axs[1])
-        self.plotParam(axs[2])
-        # fig.suptitle(f'Changing Parameter: {self.change[0].value} = {self.change[1]}')
+        fig: plt.Figure = plt.figure(figsize=(15, 6))
+        axs: list[plt.Axes] = fig.subplots(1, 2,
+                                           gridspec_kw={'width_ratios': [1.5, 1.5], 'left': 0.07, 'right': 0.96})
+        fig.subplots_adjust(wspace=0.3)
+        fig.suptitle(r'N and $\alpha$ vs. iteration times')
 
-        fig2 = plt.figure()
-        axs2: plt.Axes = fig2.subplots(1, 2)
-        index = range(0, self.S * self.n, self.S)
-        _ = axs2[0].hist(self.N_f, range=(0, 2), bins=20, weights=None)
-        _ = axs2[1].hist(self.Alpha_f, range=(0, 1), bins=30, weights=None)
-        plt.show()
+        axs[0].plot(self.iter_lst, np.concatenate(self.N_lst, axis=0))
+        axs[0].set_title(f'Number of species vs. iteration times')
+        axs[0].set_xlabel('iteration')
+        axs[0].set_ylabel('N')
 
-    def plotboth(self):
+        axs[1].plot(self.iter_lst, np.concatenate(self.Alpha_lst, axis=0))
+        axs[1].set_title(r'$\alpha$ vs. iteration times')
+        axs[1].set_xlabel('iteration')
+        axs[1].set_ylabel(r'$\alpha$')
+
+    def plotHist_N(self):
+        """
+        Plot the histogram of $N_{0}, N_{f}$
+        :return:
+        """
+        fig: plt.Figure = plt.figure()
+        axs: list[plt.Axes] = fig.subplots(1, 2)
+        fig.suptitle(r'histogram of $N_{0}, N_{f}$')
+        # index = range(0, self.S * self.n, self.S)
+        minN = min(np.min(self.N0), np.min(self.N_f))
+        maxN = max(np.max(self.N0), np.max(self.N_f))
+        ran = (minN * 0.9, maxN * 1.1)
+        _ = axs[0].hist(self.N0, range=ran, bins=20, weights=None)
+        _ = axs[1].hist(self.N_f, range=ran, bins=20, weights=None)
+        axs[0].set_xlabel(r'$N_{0}$')
+        axs[1].set_xlabel(r'$N_{f}$')
+        axs[0].set_ylabel('Count')
+        axs[1].set_ylabel('Count')
+
+    def plotHist_Afa(self):
+        """
+        Plot the histogram of $\alpha_{0}, \alpha_{f}$
+        :return:
+        """
+        fig: plt.Figure = plt.figure()
+        axs: list[plt.Axes] = fig.subplots(1, 2)
+        fig.suptitle(r'histogram of $\alpha_{0}, \alpha_{f}$')
+        # index = range(0, self.S * self.n, self.S)
+        _ = axs[0].hist(self.Alpha0, range=(0, 1), bins=30, weights=None)
+        _ = axs[1].hist(self.Alpha_f, range=(0, 1), bins=30, weights=None)
+        axs[0].set_xlabel(r'$\alpha_{0}$')
+        axs[1].set_xlabel(r'$\alpha_{f}$')
+        axs[0].set_ylabel('Count')
+        axs[1].set_ylabel('Count')
+
+    def plotFlow(self, idx: int):
+        """
+        Plot the flow of species i from patch k to patch l
+        :return:
+        """
+        to_plot = self.flow[idx]
+        fig: plt.Figure = plt.figure(figsize=(9, 5))
+        ax: plt.Axes = fig.subplots()
+        im = ax.imshow(to_plot)
+        cbar = ax.figure.colorbar(im, ax=ax)
+        for k in range(self.n):
+            for l in range(self.n):
+                text = ax.text(l, k, round(to_plot[k, l], 2),
+                                ha="center", va="center", color="w")
+        # fig.tight_layout()
+        ax.set_xlabel('Arrival Patch')
+        ax.set_ylabel('Departure Patch')
+        ax.set_title(f'Flow of species #{idx}')
+
+    def plotAll(self, histN=True, histAfa=True, flow=True):
         """
         plot: N, eigenvalues, parameters
         :return:
         """
-        for i in range(self.S):
-            self.plotNandAlpha()
-            self.plotFlow(idx=i)
-            plt.show()
+        self.plotParam()
+        self.plotNandAlpha()
+        if histN:
+            self.plotHist_N()
+        if histAfa:
+            self.plotHist_Afa()
+        if flow:
+            for i in range(self.S):
+                self.plotFlow(idx=i)
+                plt.show()
 
 
 class NetworkManager:
@@ -476,7 +495,7 @@ class NetworkManager:
                  initial='random', growth=1, n0=1, alpha0=0.2, N0=None, Alpha0=None,
                  miu_n0=1, sgm_n0=0.05, miu_alpha=0.5, sgm_alpha=0.01,
                  connectance=0.3, sgm_aij=0.1, sgm_qx=0.1, Adiag=1, dispersal=10, kappa=0.1,
-                 method=2, dt=1e-2, maxIteration=40e3, maxError=1e-4,
+                 method=2, dt=1e-2, maxIteration=10e3, maxError=1e-4,
                  ):
         """
         The parameters of the network.
@@ -549,7 +568,18 @@ class NetworkManager:
         # if not net.stable:
         #     continue
         net.disp()
-        net.plotboth()
+        net.plotAll()
+
+    def plotaxes(self, X, Y, ax: plt.Axes, title='', xlabel='', ylabel='',
+                 xlim: None | tuple = None, ylim: None | tuple = None):
+        ax.plot(X, Y)
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        if xlim is not None:
+            ax.set_xlim(xlim[0], xlim[1])
+        if ylim is not None:
+            ax.set_ylim(ylim[0], ylim[1])
 
     def change(self, x_var: NetParam, start, end, step):
         """
@@ -569,23 +599,15 @@ class NetworkManager:
             entropy_lst.append(np.array(net.entropy).reshape(1, -1))
             Nvar_lst.append(np.array(net.N_var).reshape(1, -1))
 
-        fig, axs = plt.subplots(1, 4)
-        axs[0].plot(x_lst, np.concatenate(flow_lst, axis=0))
-        axs[0].set_title(f'absolute flow of each species')
-        axs[0].set_xlabel(f'{x_var.value}')
-        axs[0].set_ylabel('absolute flow')
+        fig, axs = plt.subplots(1, 3)
+        self.plotaxes(X=x_lst, Y=np.concatenate(flow_lst, axis=0), ax=axs[0],
+                      title=f'absolute flow of each species', xlabel=f'{x_var.value}', ylabel='absolute flow')
+        self.plotaxes(X=x_lst, Y=np.concatenate(entropy_lst, axis=0), ax=axs[1],
+                      title=f'entropy of each species', xlabel=f'{x_var.value}', ylabel='entropy')
+        self.plotaxes(X=x_lst, Y=np.concatenate(Nvar_lst, axis=0), ax=axs[2],
+                      title=f'variance of N in each patches', xlabel=f'{x_var.value}', ylabel='variance')
 
-        axs[1].plot(x_lst, np.concatenate(entropy_lst, axis=0))
-        axs[1].set_title(f'entropy of each species')
-        axs[1].set_xlabel(f'{x_var.value}')
-        axs[1].set_ylabel('entropy')
-
-        axs[2].plot(x_lst, np.concatenate(Nvar_lst, axis=0))
-        axs[2].set_title(f'variance of N in each patches')
-        axs[2].set_xlabel(f'{x_var.value}')
-        axs[2].set_ylabel('variance')
-
-        net.plotParam(axs[-1])
+        net.plotParam()
         plt.show()
 
     def origin(self, mode=1, runtime=5):
@@ -611,41 +633,6 @@ class NetworkManager:
         axs: list[list[plt.Axes]] = fig1.subplots(2, 2)
         fig1.subplots_adjust(wspace=0.3, hspace=0.3)
 
-        # net = None
-        # N1_lst, Alpha1_lst = [], []
-        # for N0 in N0_lst:
-        #     self.config[NetParam.Alpha0] = None
-        #     self.config[NetParam.N0] = N0
-        #     net = DirectionalPreferenceNetwork(self.config)
-        #     net.compute()
-        #     N1_lst.append(net.N_f.reshape(1, -1))
-        #     # N1_lst.append(net.N_f[0])
-        #     # Alpha1_lst.append(net.Alpha_f[0])
-        #
-        # axs[0][0].plot(xN, np.concatenate(N1_lst, axis=0))
-        # axs[0][0].set_title(r'$N_{f}$ affected by ' + labels[0])
-        # axs[0][0].set_xlabel(labels[0])
-        # axs[0][0].set_ylabel(r'$N_{f}$')
-        # axs[0][0].set_ylim(np.min(N1_lst)*0.9, np.max(N1_lst)*1.1)
-        #
-        # net = None
-        # N1_lst, Alpha1_lst = [], []
-        # affect = ''
-        # for N0 in N0_lst:
-        #     self.config[NetParam.Alpha0] = None
-        #     self.config[NetParam.N0] = N0
-        #     net = DirectionalPreferenceNetwork(self.config)
-        #     net.compute()
-        #     Alpha1_lst.append(net.Alpha_f.reshape(1, -1))
-        #     # N1_lst.append(net.N_f[0])
-        #     # Alpha1_lst.append(net.Alpha_f[0])
-        #
-        # axs[0][1].plot(xN, np.concatenate(Alpha1_lst, axis=0))
-        # axs[0][1].set_title(r'$\alpha_{f}$ affected by ' + labels[0])
-        # axs[0][1].set_xlabel(labels[0])
-        # axs[0][1].set_ylabel(r'$\alpha_{f}$')
-        # axs[0][1].set_ylim(np.min(Alpha1_lst) * 0.9, np.max(Alpha1_lst) * 1.1)
-
         net = None
         N1_lst, Alpha1_lst = [], []
         for Alpha0 in Alpha0_lst:
@@ -653,39 +640,21 @@ class NetworkManager:
             self.config[NetParam.Alpha0] = Alpha0
             net = DirectionalPreferenceNetwork(self.config)
             net.compute()
-            net.plotboth()
-            plt.show()
+            # net.plotAll()
+            # plt.show()
             N1_lst.append(net.N_f.reshape(1, -1))
             Alpha1_lst.append(net.Alpha_f.reshape(1, -1))
             # N1_lst.append(net.N_f[0])
             # Alpha1_lst.append(net.Alpha_f[0])
 
-        axs[1][0].plot(xAfa, np.concatenate(N1_lst, axis=0))
-        axs[1][0].set_title(r'$N_{f}$ affected by ' + labels[1])
-        axs[1][0].set_xlabel(labels[1])
-        axs[1][0].set_ylabel(r'$N_{f}$')
-        axs[1][0].set_ylim(np.min(N1_lst) * 0.8, np.max(N1_lst) * 1.1)
+        self.plotaxes(X=xAfa, Y=np.concatenate(N1_lst, axis=0), ax=axs[1][0],
+                      title=r'$N_{f}$ affected by ' + labels[1], xlabel=labels[1], ylabel=r'$N_{f}$',
+                      ylim=(np.min(N1_lst) * 0.8, np.max(N1_lst) * 1.1))
+        self.plotaxes(X=xAfa, Y=np.concatenate(Alpha1_lst, axis=0), ax=axs[1][1],
+                      title=r'$\alpha_{f}$ affected by ' + labels[1], xlabel=labels[1], ylabel=r'$\alpha_{f}$',
+                      ylim=(np.min(Alpha1_lst) * 0.8, np.max(Alpha1_lst) * 1.1))
 
-        # net = None
-        # N1_lst, Alpha1_lst = [], []
-        # for Alpha0 in Alpha0_lst:
-        #     self.config[NetParam.N0] = None
-        #     self.config[NetParam.Alpha0] = Alpha0
-        #     net = DirectionalPreferenceNetwork(self.config)
-        #     net.compute()
-        #     Alpha1_lst.append(net.Alpha_f.reshape(1, -1))
-        #     # N1_lst.append(net.N_f[0])
-        #     # Alpha1_lst.append(net.Alpha_f[0])
-
-        axs[1][1].plot(xAfa, np.concatenate(Alpha1_lst, axis=0))
-        axs[1][1].set_title(r'$\alpha_{f}$ affected by ' + labels[1])
-        axs[1][1].set_xlabel(labels[1])
-        axs[1][1].set_ylabel(r'$\alpha_{f}$')
-        axs[1][1].set_ylim(np.min(Alpha1_lst) * 0.8, np.max(Alpha1_lst) * 1.1)
-
-        fig2: plt.Figure = plt.figure()
-        axs2 = fig2.subplots()
-        net.plotParam(axs2)
+        net.plotAll(histN=False, histAfa=False, flow=False)
 
         plt.show()
 
@@ -722,7 +691,7 @@ class NetworkManager:
         np.random.seed(1)
         xAfa, Alpha0_lst = range(runtime), self.initial_alpha(S, n, runtime, mode)
         fig: plt.Figure = plt.figure()
-        axs: list[plt.Axes] = fig.subplots(1, 3)
+        axs: list[plt.Axes] = fig.subplots(1, 2)
 
         models = {1: 'interval', 2: 'proportion', 3: 'dirichlet'}
         fig.suptitle(r'First group of $\alpha:$'
@@ -734,34 +703,27 @@ class NetworkManager:
         # _ = axs[0].hist(Alpha0_lst[0][index], range=(0, 1), bins=30, weights=None)
         # plt.show()
         # temp = [Alpha0_lst[i][index].reshape(1, -1) for i in range(runtime)]
-        # axs[0].plot(xAfa, np.concatenate(temp, axis=0))
-        # axs[0].set_xlabel('runs')
-        # axs[0].set_ylabel(r'$\alpha_{0}$')
-        # # axs[0].set_ylim(np.min(Alpha0_lst) * 0.8, np.max(Alpha0_lst) * 1.1)
-        # axs[0].set_ylim(0, 1)
+        # self.plotaxes(X=xAfa, Y=np.concatenate(temp, axis=0), ax=axs[0],
+        #               xlabel='runs', ylabel=r'$\alpha_{0}$', ylim=(0, 1))
 
         net = None
         Alpha1_lst = []
         for Alpha0 in Alpha0_lst:
             self.config[NetParam.N0] = None
             self.config[NetParam.Alpha0] = Alpha0
-            _ = axs[0].hist(Alpha0_lst[0], range=(0, 1), bins=30, weights=None)
+            # _ = axs[0].hist(Alpha0_lst[0], range=(0, 1), bins=30, weights=None)
             net = DirectionalPreferenceNetwork(self.config)
             net.compute()
-            net.plotNandAlpha()
-            plt.show()
+            # net.plotNandAlpha()
+            # plt.show()
             Alpha1_lst.append(net.Alpha_f[index].reshape(1, -1))
             # N1_lst.append(net.N_f[0])
             # Alpha1_lst.append(net.Alpha_f[0])
 
-        axs[1].plot(xAfa, np.concatenate(Alpha1_lst, axis=0))
-        axs[1].set_xlabel('runs')
-        axs[1].set_ylabel(r'$\alpha_{f}$')
-        # axs[1].set_ylim(np.min(Alpha1_lst) * 0.8, np.max(Alpha1_lst) * 1.1)
-        axs[1].set_ylim(0, 1)
+        self.plotaxes(X=xAfa, Y=np.concatenate(Alpha1_lst, axis=0), ax=axs[1],
+                      xlabel='runs', ylabel=r'$\alpha_{f}$', ylim=(0, 1))
 
-        net.plotParam(axs[-1])
-        net.plotNandAlpha()
+        net.plotAll(histN=False, histAfa=False, flow=False)
 
         plt.show()
 
@@ -796,7 +758,7 @@ class NetworkManager:
 
 if __name__ == '__main__':
     net_manager = NetworkManager()
-    net_manager.computeNet()
-    # net_manager.change(NetParam.n0, 1, 100, 5)
-    # net_manager.origin(mode=1)
+    # net_manager.computeNet()
+    # net_manager.change(NetParam.n0, 1, 12, 5)
+    net_manager.origin(mode=1)
     # net_manager.origin_alpha()
