@@ -17,34 +17,34 @@ class NetParam(Enum):
     """
     Define the name of the network parameters.
     """
-    species = {'latex': r'species: $S=$', 'str': 'S='}  # number of species
-    patches = {'latex': r'patches: $n=$', 'str': 'n='}  # number of patches
-    randomSeed = {'latex': 'randomSeed', 'str': 'seed='}  # seed of random numbers
+    species = {'latex': r'$S$', 'str': 'S'}  # number of species
+    patches = {'latex': r'$n$', 'str': 'n'}  # number of patches
+    randomSeed = {'latex': 'randomSeed', 'str': 'seed'}  # seed of random numbers
 
     initial = {'latex': 'initial mode', 'str': 'initialMode'}  # initial mode
-    growth = {'latex': r'growth rate: $m=$', 'str': 'growth='}  # intra-specific interaction strength
+    growth = {'latex': r'$m$', 'str': 'growth'}  # intra-specific interaction strength
     N0 = {'latex': 'N0'}
     n0 = {'latex': 'initial N'}  # initial N
     miu_n0 = {'latex': 'miu_n0'}
     sgm_n0 = {'latex': 'sgm_n0'}  # the variance of N0
-    connectance = {'latex': r'connectance: $c=$',
-                   'str': 'c='}  # Proportion of realized interactions among all possible ones
-    sgm_aij = {'latex': r'$\sigma _{a }=$'}  # the variance of the distribution N(0, var) of a_ij
-    sgm_qx = {'latex': r'$\sigma _{q }$=', 'str': 'sgmqx='}  # the variance of the distribution N(1, var) of q_ij
+    connectance = {'latex': r'$c$',
+                   'str': 'c'}  # Proportion of realized interactions among all possible ones
+    sgm_aij = {'latex': r'$\sigma _{a }$', 'str': 'sgm'}  # the variance of the distribution N(0, var) of a_ij
+    sgm_qx = {'latex': r'$\sigma _{q }$', 'str': 'sgmqx'}  # the variance of the distribution N(1, var) of q_ij
     Alpha0 = {'latex': 'Alpha0'}
     alpha0 = {'latex': 'alpha0'}  # initial alpha
     miu_alpha = {'latex': 'miu_alpha'}
     sgm_alpha = {'latex': 'sgm_alpha'}
     Adiag = {'latex': 'intraspecific interaction'}
-    dispersal = {'latex': r'dispersal: $d=$', 'str': 'd='}  # dispersal rate
-    kappa = {'latex': r'$\kappa=$', 'str': 'kpa='}
+    dispersal = {'latex': r'$d$', 'str': 'd'}  # dispersal rate
+    kappa = {'latex': r'$\kappa$', 'str': 'kpa'}
 
     method_alpha: dict = {'name': r'model of $\alpha$', 0: 'Personal', 1: 'Softmax'}
 
-    rho = {'latex': r'correlation: $\rho=$', 'str': 'rho='}  # correlation between patches
-    n_e = {'latex': r'$n_{e}=$'}  # the effective number of ecologically independent patches in the meta-ecosystem
-    left1 = {'latex': r'$\sigma \sqrt{c \left (S-1 \right ) } =$'}  # the left term of May's inequality
-    left2 = {'latex': r'$\sigma \sqrt{c \left (S-1 \right ) /n_{e}  } =$'}  # the left term of May's inequality
+    rho = {'latex': r'$\rho$', 'str': 'rho'}  # correlation between patches
+    n_e = {'latex': r'$n_{e}$'}  # the effective number of ecologically independent patches in the meta-ecosystem
+    left1 = {'latex': r'$\sigma \sqrt{c \left (S-1 \right ) } $'}  # the left term of May's inequality
+    left2 = {'latex': r'$\sigma \sqrt{c \left (S-1 \right ) /n_{e}  } $'}  # the left term of May's inequality
 
     method_ode = 'computation method'  # numerical computation method
     dt = {'latex': 'dt'}  # time interval
@@ -92,7 +92,7 @@ class AdaptiveMigration:
         self.curN, self.curAlpha = None, None
         self.theoryPoints, self.maxTheoryEigvals, self.maxFactEigvals = [], [], []
         self.errors = []
-        self.N_f, self.Alpha_f = None, None
+        self.N_f, self.Alpha_f = np.zeros(self.S * self.n), np.zeros(self.S * self.n * self.n)
         self.J, self.eigval = None, None
         self.maxEigval = None
         self.fixpt = []
@@ -519,6 +519,10 @@ class AdaptiveMigration:
                     self.stable = True
                     break
 
+                if solver.status == 'failed':
+                    self.stable, self.pst = False, False
+                    return
+
             self.N_f, self.Alpha_f = self.curN, self.curAlpha
             # print('minN:', np.min(self.N_f))
             print('persistence:', self.pst)
@@ -664,21 +668,21 @@ class AdaptiveMigration:
         """
         params = f'''
             {NetParam.randomSeed.value['latex']}: {self.seed}
-            {NetParam.species.value['latex']}{self.S}
-            {NetParam.patches.value['latex']}{self.n}
-            {NetParam.dispersal.value['latex']}{self.d}
-            {NetParam.kappa.value['latex']}{self.kappa}
-            {NetParam.connectance.value['latex']}{self.c}
-            {NetParam.sgm_aij.value['latex']}{self.sgm_aij}
-            {NetParam.rho.value['latex']}{self.rho}
-            {NetParam.n_e.value['latex']}{round(self.n_e, 2)}
-            {NetParam.left1.value['latex']}{round(self.left1, 2)}
-            {NetParam.left2.value['latex']}{round(self.left2, 2)}\n
+            species: {NetParam.species.value['latex']}={self.S}
+            patches: {NetParam.patches.value['latex']}={self.n}
+            disperal: {NetParam.dispersal.value['latex']}={self.d}
+            kappa: {NetParam.kappa.value['latex']}={self.kappa}
+            connectance: {NetParam.connectance.value['latex']}={self.c}
+            strength: {NetParam.sgm_aij.value['latex']}={self.sgm_aij}
+            correlation: {NetParam.rho.value['latex']}={self.rho}
+            {NetParam.n_e.value['latex']}={round(self.n_e, 2)}
+            {NetParam.left1.value['latex']}={round(self.left1, 2)}
+            {NetParam.left2.value['latex']}={round(self.left2, 2)}\n
             {NetParam.initial.value['latex']}: {self.initial}'''
 
         if self.initial == 'random':
             params += f'''
-            {NetParam.growth.value['latex']}{self.growth}
+            growth rate: {NetParam.growth.value['latex']}={self.growth}
             {NetParam.n0.value['latex']}: {self.n0}
             '''
         elif self.initial == 'fixed':
@@ -877,11 +881,11 @@ class NetworkSweeper:
     This class works as an interface to compute networks.
     """
 
-    def __init__(self, species=10, patches=5, randomSeed=2,
+    def __init__(self, species=15, patches=10, randomSeed=2,
                  initial='random', growth=1, n0=1, alpha0=0.2, N0=None, Alpha0=None,
                  miu_n0=1, sgm_n0=0.05, miu_alpha=0.5, sgm_alpha=0.01,
-                 connectance=0.1, sgm_aij=0.25, sgm_qx=10, rho=0.1, Adiag=1, dispersal=50, kappa=100,
-                 method_ode=2, method_alpha='Softmax', dt=1e-4, maxIteration=10e4, maxError=1e-4,
+                 connectance=1, sgm_aij=0.25, sgm_qx=10, rho=0.1, Adiag=1, dispersal=1, kappa=1,
+                 method_ode=2, method_alpha='Softmax', dt=1e-4, maxIteration=100e4, maxError=1e-4,
                  ini_dpd=False, runtime=0,
                  ):
         """
@@ -935,6 +939,7 @@ class NetworkSweeper:
         self.ini_dpd = ini_dpd
         self.runtime = runtime
 
+        self.unchange_var = None
         self.change_var = {'var': NetParam.randomSeed, 'value': []}
 
         self.var_Nf, self.var_Alphaf, self.var_flow, self.absflow = [], [], [], []
@@ -1182,6 +1187,7 @@ class NetworkSweeper:
         self.aim = 'sweep'
         self.config[NetParam.randomSeed] = seed
         self.config[unchange] = value_unchg
+        self.unchange_var = unchange
         self.change_var['var'] = change
         self.change_var['value'] = values_chg
         # research = ['LinearStability vs d, kpa']
@@ -1213,9 +1219,16 @@ class NetworkSweeper:
             net.compute()
             if not net.stable or not net.pst:
                 converge = False
-                err_lst.append([self.config[NetParam.connectance], self.config[NetParam.rho],
-                                self.config[NetParam.dispersal], self.config[NetParam.kappa],
-                                self.config[NetParam.randomSeed]])
+                err_lst.append({
+                    'seed': self.config[NetParam.randomSeed],
+                    'S': self.config[NetParam.species],
+                    'n': self.config[NetParam.patches],
+                    'd': self.config[NetParam.dispersal],
+                    'kpa': self.config[NetParam.kappa],
+                    'c': self.config[NetParam.connectance],
+                    'rho': self.config[NetParam.rho],
+                    'sgm': self.config[NetParam.sgm_aij]
+                })
             net_lst.append(net)
             self.var_Nf.append(net.var_Nf)
             self.maxmin_Nf.append([np.max(net.N_f), np.min(net.N_f)])
@@ -1241,17 +1254,26 @@ class NetworkSweeper:
         #
         # print('sweep finished')
 
-    def linearStability(self, d_value: list, kpa_value: list, seeds=50):
-        directory = "./log/sweep/LinearStability vs d, kpa/" \
-                    + f"c{self.config[NetParam.connectance]}rho{self.config[NetParam.rho]}" \
-                    + f"sgm{self.config[NetParam.sgm_aij]}" \
-                    + f"S{self.config[NetParam.species]}n{self.config[NetParam.patches]}" \
-                    + f"d{min(d_value)}~{max(d_value)}" \
-                    + f"kpa{min(kpa_value)}~{max(kpa_value)}seed0~{seeds}"
+    def linearStability(self, unchange: NetParam, unchg_value: list, change: NetParam, chg_value: list, seeds=50):
+        vars = [NetParam.species, NetParam.patches, NetParam.connectance, NetParam.rho, NetParam.sgm_aij,
+                NetParam.dispersal, NetParam.kappa]
+        vars.remove(unchange)
+        vars.remove(change)
+        directory = "./log/sweep/LinearStability/"
+        directory += f"{unchange.value['str']}{min(unchg_value)}~{max(unchg_value)}"
+        directory += f"{change.value['str']}{min(chg_value)}~{max(chg_value)}"
+        for var in vars:
+            directory += f"{var.value['str']}{self.config[var]}"
+        # directory = "./log/sweep/LinearStability vs d, kpa/" \
+        #             + f"c{self.config[NetParam.connectance]}rho{self.config[NetParam.rho]}" \
+        #             + f"sgm{self.config[NetParam.sgm_aij]}" \
+        #             + f"S{self.config[NetParam.species]}n{self.config[NetParam.patches]}" \
+        #             + f"d{min(d_value)}~{max(d_value)}" \
+        #             + f"kpa{min(kpa_value)}~{max(kpa_value)}seed0~{seeds}"
         to_file = []
         flag_converge = True
         errors = []
-        for d in d_value:
+        for v in unchg_value:
             sweeper_lst = []
             print(directory)
             if not os.path.exists(directory):
@@ -1259,8 +1281,7 @@ class NetworkSweeper:
 
             for seed in range(seeds):
                 converge, err_lst \
-                    = self.sweep(unchange=NetParam.dispersal, value_unchg=d, change=NetParam.kappa,
-                                 values_chg=kpa_value, seed=seed)
+                    = self.sweep(unchange=unchange, value_unchg=v, change=change, values_chg=chg_value, seed=seed)
                 if not converge:
                     flag_converge = False
                     errors.extend(err_lst)
@@ -1430,39 +1451,55 @@ class NetworkManager:
         print(converge)
         print(errors)
 
+        err_seeds = set()
+        for err in eval(errors[7:]):
+            # err_seeds.add(err[-1])
+            err_seeds.add(err['seed'])
+
         raw_data = DataLoader.load(f'{dir}/result.bin')
         sweeper: NetworkSweeper = raw_data[0][0]
-        kpa_data = sweeper.change_var['value']
-        d_data = []
-        dk_mean = np.empty(shape=(len(raw_data), len(kpa_data)))
-        dk_err = np.empty(shape=(len(raw_data), len(kpa_data)))
+        change = sweeper.change_var['var'].value['latex']
+        chg_data = sweeper.change_var['value']
+        unchange = sweeper.unchange_var.value['latex']
+        unchg_data = []
+        data_mean = np.empty(shape=(len(raw_data), len(chg_data)))
+        data_err = np.empty(shape=(len(raw_data), len(chg_data)))
         for idx, sp_lst in enumerate(raw_data):
-            d_data.append(sp_lst[0].config[NetParam.dispersal])
-            eivals = np.array([sweeper.maxEigvals for sweeper in sp_lst])
-            dk_mean[idx] = np.mean(eivals, axis=0)
+            unchg_data.append(sp_lst[0].config[sweeper.unchange_var])
+            eigvals = np.array([sweeper.maxEigvals for sweeper in sp_lst])
+            eigvals = np.delete(eigvals, list(err_seeds), axis=0)
+            data_mean[idx] = np.mean(eigvals, axis=0)
+            data_err[idx] = np.std(eigvals, axis=0)
+
+        lg_d = list(map(lambda x: rf'{unchange}={x}', unchg_data))
+        lg_kpa = list(map(lambda x: rf'{change}={x}', chg_data))
 
         fig: plt.Figure = plt.figure()
         axs: list[plt.Axes] = fig.subplots(2, 1)
-        ax1, ax2 = axs
-        fig.suptitle(r'max Re($\lambda$) vs. $\kappa$ and $d$')
+        ax1, ax2 = axs[0], axs[1]
+        fig.suptitle(rf'max Re($\lambda$) vs. {unchange} and {change}')
+        fig.subplots_adjust(hspace=0.25)
         markers = ['o', '^', 's', 'D', 'P']
 
         # for i in range(5):
         #     # ax1.plot(x_data, y1[:, i], marker=markers[i], color='k', ls='--', lw=1)
         #     ax1.plot(x_data, y1[:, i], marker=markers[i], ls='--', lw=1)
-        ax1.plot(d_data, dk_mean, 'o--')
-        # ax1.legend(lg1)
-        ax1.set_title(r'Small $d$')
-        ax1.set_xlabel(r'$\d$')
+        ax1.plot(unchg_data, data_mean, 'o--')
+        # for i in range(data_mean.shape[1]):
+        #     ax1.errorbar(unchg_data, data_mean[:, i], data_err[:, i])
+        # ax1.set_xscale('symlog', linthresh=1e-4)
+        ax1.legend(lg_kpa)
+        ax1.set_title(rf'max $Re(\lambda)$ vs {unchange}')
+        ax1.set_xlabel(rf'{unchange}')
         ax1.set_ylabel(r'max $Re(\lambda)$')
 
-        # for i in range(5):
-        #     # ax1.plot(x_data, y1[:, i], marker=markers[i], color='k', ls='--', lw=1)
-        #     ax2.plot(x_data, y2[:, i], marker=markers[i], ls='--', lw=1)
-        # ax2.legend(lg2)
-        ax2.plot(kpa_data, dk_mean.T, 'o--')
-        ax2.set_title(r'Large $d$')
-        ax2.set_xlabel(r'$\kappa$')
+        # for i in range(data_mean.shape[0]):
+        #     ax2.errorbar(chg_data, data_mean[i, :], data_err[i, :])
+        ax2.plot(chg_data, data_mean.T, 'o--')
+        # ax2.set_xscale('symlog')
+        ax2.legend(lg_d)
+        ax2.set_title(rf'max $Re(\lambda)$ vs {change}')
+        ax2.set_xlabel(rf'{change}')
         ax2.set_ylabel(r'max $Re(\lambda)$')
 
         # for item in os.listdir(dir):
@@ -1557,19 +1594,30 @@ if __name__ == '__main__':
     # N0 = [np.random.normal(1, 0.3, size=50) for i in range(10)]
     # net_sweeper.sweep(unchange=NetParam.dispersal, value_unchg=2,
     #                   change=NetParam.kappa, values_chg=[0, 0.1, 0.5, 1, 1.5, 2, 2.5, 3, 5, 7, 10])
-    d_lst = [0.01, 0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 50]
-    kpa_lst = [0, 0.01, 0.1, 1, 2, 5, 10]
-    # d_lst = [0.1, 0.25, 0.5]
-    # kpa_lst = [0, 1]
-    # for d in [0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50]:
-    #     net_sweeper = NetworkSweeper()
-    #     net_sweeper.sweep(unchange=NetParam.dispersal, value_unchg=d,
-    #                       change=NetParam.kappa, values_chg=[0, 1, 2, 5, 10, 25, 50, 75, 100],
-    #                       research_id=0, envs=[NetParam.connectance, NetParam.rho])
-    net_sweeper.linearStability(d_lst, kpa_lst, 50)
+
+    # d_lst = [0, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 100]
+    # kpa_lst = [0, 0.1, 1, 5, 10, 25]
+    # net_sweeper.linearStability(unchange=NetParam.dispersal, unchg_value=d_lst,
+    #                             change=NetParam.kappa, chg_value=kpa_lst, seeds=50)
+    # rho_lst = [0.01, 0.05, 0.1, 0.3, 0.5]
+    # rho_lst = [0.5, 0.7, 0.9, 1]
+    # sgm_lst = [1e-3, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1]
+    # sgm_lst = [1e-3, 0.01, 0.05, 0.1, 0.2, 0.3]
+    # net_sweeper.linearStability(unchange=NetParam.rho, unchg_value=rho_lst,
+    #                             change=NetParam.sgm_aij, chg_value=sgm_lst, seeds=50)
+    # c_lst = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    # c_lst = list(np.round(np.arange(0.05, 1, 0.05), 2))
+    # net_sweeper.linearStability(unchange=NetParam.rho, unchg_value=rho_lst,
+    #                             change=NetParam.connectance, chg_value=c_lst, seeds=50)
+    # S_lst = [2, 5, 10, 20, 30, 40, 50]
+    # n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # S_lst = [2, 5, 8, 10, 12, 15]
+    # n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # net_sweeper.linearStability(unchange=NetParam.species, unchg_value=S_lst,
+    #                             change=NetParam.patches, chg_value=n_lst, seeds=50)
     # net_manager = NetworkManager()
     # net_manager.readfile()
     # net_manager.show(1)
 
-    # net_manager = NetworkManager()
-    # net_manager.eigenvalue()
+    net_manager = NetworkManager()
+    net_manager.eigenvalue()
