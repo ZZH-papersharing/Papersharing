@@ -381,7 +381,9 @@ class AdaptiveMigration:
         return result1
 
     def searchTheoryPoint(self, N_guess):
+        print('start search')
         root = sp.optimize.fsolve(self.odeMougi, N_guess, maxfev=int(1e6))
+        print('search end')
         return root
 
     def theoryPoint(self, x0, procs):
@@ -393,6 +395,8 @@ class AdaptiveMigration:
                 continue
             if sum(root <= 1e-4) > 0:
                 continue
+            # if sum(root < 0) > 0:
+            #     continue
             for item in self.theoryPoints:
                 if np.linalg.norm(root - item) <= 1e-4:
                     break
@@ -608,16 +612,16 @@ class AdaptiveMigration:
         self.findFixed(method_ode=self.method_ode)
         self.Jacobian(self.N_f, self.Alpha_f)
 
-        # procs = 500
-        # x0 = [np.random.random(size=self.S * self.n) * 10 for i in range(procs)]
-        # # x0 = [np.random.normal(1, 0.3, size=self.S * self.n) for i in range(procs)]
-        # # x0.append(self.N_f + np.random.normal(0, 0.1, size=self.S * self.n))
-        # # x0 = []
-        # x0.append(self.N0)
-        # # print(x0)
-        #
+        procs = 10
+        x0 = [np.random.random(size=self.S * self.n) * 10 for i in range(procs)]
+        # x0 = [np.random.normal(1, 0.3, size=self.S * self.n) for i in range(procs)]
+        # x0.append(self.N_f + np.random.normal(0, 0.1, size=self.S * self.n))
+        # x0 = []
+        x0.append(self.N0)
+        # print(x0)
+
         # x0 = self.theoryPoint(x0, procs)
-        # # print(self.theoryPoints)
+        # print('theorypoints:', self.theoryPoints)
         # for theoryPoint in self.theoryPoints:
         #     self.Jacobian(theoryPoint, self.calcAlpha(theoryPoint), theory=True)
 
@@ -881,10 +885,10 @@ class NetworkSweeper:
     This class works as an interface to compute networks.
     """
 
-    def __init__(self, species=15, patches=10, randomSeed=2,
+    def __init__(self, species=26, patches=5, randomSeed=0,
                  initial='random', growth=1, n0=1, alpha0=0.2, N0=None, Alpha0=None,
                  miu_n0=1, sgm_n0=0.05, miu_alpha=0.5, sgm_alpha=0.01,
-                 connectance=1, sgm_aij=0.25, sgm_qx=10, rho=0.1, Adiag=1, dispersal=1, kappa=1,
+                 connectance=0.6, sgm_aij=0.1, sgm_qx=10, rho=0.1, Adiag=1, dispersal=0, kappa=1,
                  method_ode=2, method_alpha='Softmax', dt=1e-4, maxIteration=100e4, maxError=1e-4,
                  ini_dpd=False, runtime=0,
                  ):
@@ -1481,13 +1485,16 @@ class NetworkManager:
         fig.subplots_adjust(hspace=0.25)
         markers = ['o', '^', 's', 'D', 'P']
 
+        print(chg_data)
+        print(data_mean)
+
         # for i in range(5):
         #     # ax1.plot(x_data, y1[:, i], marker=markers[i], color='k', ls='--', lw=1)
         #     ax1.plot(x_data, y1[:, i], marker=markers[i], ls='--', lw=1)
         ax1.plot(unchg_data, data_mean, 'o--')
         # for i in range(data_mean.shape[1]):
         #     ax1.errorbar(unchg_data, data_mean[:, i], data_err[:, i])
-        # ax1.set_xscale('symlog', linthresh=1e-4)
+        ax1.set_xscale('symlog', linthresh=1e-4)
         ax1.legend(lg_kpa)
         ax1.set_title(rf'max $Re(\lambda)$ vs {unchange}')
         ax1.set_xlabel(rf'{unchange}')
@@ -1585,7 +1592,7 @@ class DataLoader:
 
 if __name__ == '__main__':
     net_sweeper = NetworkSweeper()
-    # net_sweeper.computeNet()
+    net_sweeper.computeNet()
     # net_sweeper.persistence(runs=50, change=NetParam.dispersal, values_chg=list(np.arange(0.1, 2.1, 0.1)))
     # net_sweeper.change(NetParam.kappa, 0, 0.11, 0.01)
     # net_sweeper.origin(mode=1)
@@ -1596,9 +1603,16 @@ if __name__ == '__main__':
     #                   change=NetParam.kappa, values_chg=[0, 0.1, 0.5, 1, 1.5, 2, 2.5, 3, 5, 7, 10])
 
     # d_lst = [0, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 100]
-    # kpa_lst = [0, 0.1, 1, 5, 10, 25]
+    # d_lst = [0.001, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1, 3, 10]
+    # for d in d_lst:
+    #     # d_lst = [0.1]
+    #     kpa_lst = [0, 0.1, 1, 2.5, 5, 7.5, 10, 15]
+    #     net_sweeper.linearStability(unchange=NetParam.dispersal, unchg_value=[d],
+    #                                 change=NetParam.kappa, chg_value=kpa_lst, seeds=1)
+    # d_lst = [0.25]
+    # kpa_lst = [0, 0.1, 1, 2.5, 5, 7.5, 10, 15]
     # net_sweeper.linearStability(unchange=NetParam.dispersal, unchg_value=d_lst,
-    #                             change=NetParam.kappa, chg_value=kpa_lst, seeds=50)
+    #                             change=NetParam.kappa, chg_value=kpa_lst, seeds=1)
     # rho_lst = [0.01, 0.05, 0.1, 0.3, 0.5]
     # rho_lst = [0.5, 0.7, 0.9, 1]
     # sgm_lst = [1e-3, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1]
@@ -1609,10 +1623,10 @@ if __name__ == '__main__':
     # c_lst = list(np.round(np.arange(0.05, 1, 0.05), 2))
     # net_sweeper.linearStability(unchange=NetParam.rho, unchg_value=rho_lst,
     #                             change=NetParam.connectance, chg_value=c_lst, seeds=50)
-    # S_lst = [2, 5, 10, 20, 30, 40, 50]
-    # n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # S_lst = [2, 5, 8, 10, 12, 15]
-    # n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    S_lst = [2, 5, 10, 20, 30, 40, 50]
+    n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    S_lst = [2, 5, 8, 10, 12, 15]
+    n_lst = [2, 3, 4, 5, 6, 7, 8, 9, 10]
     # net_sweeper.linearStability(unchange=NetParam.species, unchg_value=S_lst,
     #                             change=NetParam.patches, chg_value=n_lst, seeds=50)
     # net_manager = NetworkManager()
