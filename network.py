@@ -1,16 +1,17 @@
-import copy
-import multiprocessing as mp
-import os
-import pickle
-import time
-from tkinter import filedialog
+from enum import Enum
 
-import numba
 import numpy as np
 import scipy as sp
-import sympy as smp
-from enum import Enum
 from matplotlib import pyplot as plt
+
+
+def critical(x):
+    """
+    to determine dt
+    :param x:
+    :return:
+    """
+    return 2.3 - np.log(x + np.e - 1) / (x + np.e - 1)
 
 
 class NetParam(Enum):
@@ -20,7 +21,7 @@ class NetParam(Enum):
     species = {'latex': r'$S$', 'str': 'S'}  # number of species
     patches = {'latex': r'$n$', 'str': 'n'}  # number of patches
     randomSeed = {'latex': 'randomSeed', 'str': 'seed'}  # seed of random numbers
-    weightSeed = 'weightSeed'
+    weightSeed = {'str': 'weightSeed'}
 
     initial = {'latex': 'initial mode', 'str': 'initialMode'}  # initial mode
     growth = {'latex': r'$m$', 'str': 'growth'}  # intra-specific interaction strength
@@ -39,6 +40,8 @@ class NetParam(Enum):
     Adiag = {'latex': 'intraspecific interaction'}
     dispersal = {'latex': r'$d$', 'str': 'd'}  # dispersal rate
     kappa = {'latex': r'$\kappa$', 'str': 'kpa'}
+    scr = {'str': 'signChangeRate'}
+    record = 'record'
 
     method_alpha: dict = {'name': r'model of $\alpha$', 0: 'Personal', 1: 'Softmax'}
 
@@ -76,6 +79,8 @@ class RandomNetwork:
         self.alpha0 = config[NetParam.alpha0]
         self.miu_alpha = config[NetParam.miu_alpha]
         self.sgm_alpha = config[NetParam.sgm_alpha]
+        self.scr = config[NetParam.scr]
+        self.record = config[NetParam.record]
 
         self.d = config[NetParam.dispersal]
         self.kappa = config[NetParam.kappa]
@@ -83,6 +88,13 @@ class RandomNetwork:
         self.method_alpha = config[NetParam.method_alpha]
         self.method_ode = config[NetParam.method_ode]
         self.dt = config[NetParam.dt]  # time interval
+
+        p = max(1, np.log10(self.d) + 1)
+        if self.kappa >= critical(self.d):
+            p += 1
+        self.dt = 1 / 10 ** np.ceil(p)
+        print(self.dt)
+
         self.maxIter = config[NetParam.maxIteration]  # max iteration time
         self.maxError = config[NetParam.maxError]  # max error in iteration
         # self.change = [config['change'], config[config['change'].value]]  # the varying parameter [name, value]
@@ -159,17 +171,58 @@ class RandomNetwork:
             self.left1 = self.sgm_aij * np.sqrt(self.c * (self.S - 1))
             self.left2 = self.sgm_aij * np.sqrt(self.c * (self.S - 1) / self.n_e)
 
+            # original version, all randomized
+            W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
+            Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            W_lst = [(W_std + offset) * lmd for offset in offsets]
+
+            # # fix C change W
+            # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            # # print(Connect)
+            # np.random.seed(self.weightSeed)
             # W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
+            # offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            # W_lst = [(W_std + offset) * lmd for offset in offsets]
+
+            # # fix C, fix Wstd, change offset
+            # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            # W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
+            # np.random.seed(self.weightSeed)
+            # offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            # W_lst = [(W_std + offset) * lmd for offset in offsets]
+
+            # # fix C, fix W strength, change Sign
+            # # version 1: consider rho
             # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
             # offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            # W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
+            # np.random.seed(self.weightSeed)
+            # sgn = np.random.binomial(1, 0.5, size=(self.S, self.S)) * 2 - 1
+            # W_lst = [(W_std + offset) * lmd * sgn for offset in offsets]
 
-            Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
-            # print(Connect)
-            np.random.seed(self.weightSeed)
-            W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
-            offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            # # version 2: ignore rho
+            # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            # W_x = [np.random.normal(0, self.sgm_aij, size=(self.S, self.S)) for i in range(self.n)]
+            # np.random.seed(self.weightSeed)
+            # sgn = np.random.binomial(1, 0.5, size=(self.S, self.S)) * 2 - 1
+            # W_lst = [abs(W) * sgn for W in W_x]
 
-            W_lst = [(W_std + offset) * lmd for offset in offsets]
+            # # fix C, Sign, change absW
+            # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            # sgn = np.random.binomial(1, 0.5, size=(self.S, self.S)) * 2 - 1
+            # np.random.seed(self.weightSeed)
+            # W_x = [np.random.normal(0, self.sgm_aij, size=(self.S, self.S)) for i in range(self.n)]
+            # W_lst = list(map(lambda x: abs(x) * sgn, W_x))
+
+            # # fix C, absW, change Sign step-by-step
+            # Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
+            # absw = self.sgm_aij * np.sqrt(2 / np.pi)
+            # absW_lst = [np.random.binomial(1, 0.5, size=(self.S, self.S)) * 2 * absw - absw for i in range(self.n)]
+            # np.random.seed(self.weightSeed)
+            # sgn = np.random.binomial(1, self.scr, size=(self.S, self.S)) * (-1)
+            # W_lst = list(map(lambda x: x * sgn, absW_lst))
+
             self.Ax_lst = [Connect * Wx for Wx in W_lst]
             self.Ax_lst = [Ax - np.diag(np.diag(Ax) + self.Adiag) for Ax in self.Ax_lst]
             # for i in range(self.n):

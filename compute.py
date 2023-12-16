@@ -4,17 +4,23 @@ from network import *
 class Computer:
     def __init__(self, net: RandomNetwork):
         self.net = net
+        self.slope = []
 
     def calcAlpha(self, N):
         self.net.G = self.net.M + np.matmul(self.net.A, N)
-        P3 = np.concatenate([self.net.G] * self.net.n)
-        G_species_lst = [self.net.G[i::self.net.S] for i in range(0, self.net.S)]
+        # minute the max to avoid overflow
+        maxG = self.net.G.reshape((self.net.n, self.net.S)).max(axis=0)
+        G = self.net.G - np.concatenate([maxG] * self.net.n)
+        # G = self.net.G
+        P3 = np.concatenate([G] * self.net.n)
+        G_species_lst = [G[i::self.net.S] for i in range(0, self.net.S)]
         temp = [np.sum(np.exp(self.net.kappa * Gi)) for Gi in G_species_lst]
         sumExp = np.concatenate([temp] * self.net.n ** 2)
         Alpha = np.exp(self.net.kappa * P3) / sumExp
         return Alpha
 
     def odeMougi(self, t=0, N=0):
+
         """
         the preference-dispersal LV equation represented with matrix
         :param N: current number matrix of species
@@ -32,6 +38,8 @@ class Computer:
         term_flow = np.multiply(self.net.D, (term_N_2 - term_N_3))
         result1 = term_1 + term_flow
 
+        self.slope.append(result1)
+
         return result1
 
     def findFixed(self):
@@ -43,22 +51,23 @@ class Computer:
         self.net.initcompute()
 
         solver = sp.integrate.RK45(self.odeMougi, t0=0, y0=self.net.N0, t_bound=self.net.dt * self.net.maxIter,
-                                   max_step=100 * self.net.dt)
+                                   first_step=10*self.net.dt, max_step=2*self.net.dt)
 
         last_N = self.net.N0
         for i in range(int(self.net.maxIter)):
-            if i % 2 == 0:
-                self.net.iter_lst.append(solver.t / self.net.dt)
-                if self.net.method_alpha == NetParam.method_alpha.value[0]:
-                    self.net.curN = solver.y[: self.net.S * self.net.n]
-                    self.net.curAlpha = solver.y[: self.net.S * self.net.n]
-                elif self.net.method_alpha == NetParam.method_alpha.value[1]:
-                    self.net.curN = solver.y
+            if self.net.method_alpha == NetParam.method_alpha.value[0]:
+                self.net.curN = solver.y[: self.net.S * self.net.n]
+                self.net.curAlpha = solver.y[: self.net.S * self.net.n]
+            elif self.net.method_alpha == NetParam.method_alpha.value[1]:
+                self.net.curN = solver.y
 
-                self.net.N_lst.append(self.net.curN.reshape(1, -1))
-                self.net.Alpha_lst.append(self.net.curAlpha.reshape(1, -1))
-                self.net.G_lst.append(self.net.G.reshape(1, -1))
-                self.net.avgG_lst.append(self.net.avgG.reshape(1, -1))
+            if i % 2 == 0:
+                if self.net.record:
+                    self.net.iter_lst.append(solver.t / self.net.dt)
+                    self.net.N_lst.append(self.net.curN.reshape(1, -1))
+                    self.net.Alpha_lst.append(self.net.curAlpha.reshape(1, -1))
+                    self.net.G_lst.append(self.net.G.reshape(1, -1))
+                    self.net.avgG_lst.append(self.net.avgG.reshape(1, -1))
 
             solver.step()
 
@@ -88,9 +97,12 @@ class Computer:
                 return
 
         self.net.N_f, self.net.Alpha_f = self.net.curN, self.net.curAlpha
-        # print('minN:', np.min(self.N_f))
+
         print('persistence:', self.net.pst)
         print('stable:', self.net.stable)
+
+        plt.plot(range(len(self.slope)), self.slope)
+        plt.show()
 
     def analysis(self):
         """
@@ -169,6 +181,7 @@ class Computer:
         :return:
         """
         self.findFixed()
-        self.Jacobian(self.net.N_f, self.net.Alpha_f)
-        self.analysis()
+        if self.net.record:
+            self.Jacobian(self.net.N_f, self.net.Alpha_f)
+            self.analysis()
 
