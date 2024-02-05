@@ -1,4 +1,7 @@
+import numpy as np
+
 from network import *
+import multiprocessing as mp
 
 
 class Computer:
@@ -17,6 +20,7 @@ class Computer:
         temp = [np.sum(np.exp(self.net.kappa * Gi)) for Gi in G_species_lst]
         sumExp = np.concatenate([temp] * self.net.n ** 2)
         Alpha = np.exp(self.net.kappa * P3) / sumExp
+
         return Alpha
 
     def odeMougi(self, t=0, N=0):
@@ -37,8 +41,16 @@ class Computer:
         term_N_3 = np.multiply(N, np.matmul(self.net.P2, self.net.curAlpha))
         term_flow = np.multiply(self.net.D, (term_N_2 - term_N_3))
         result1 = term_1 + term_flow
+        # result1 = term_1 + self.net.D
 
-        self.slope.append(result1)
+        # self.slope.append(result1)
+        self.net.G = term_1
+
+        # result1 = np.zeros(4)
+        # result1[0] = N[0] * (self.net.m + self.net.A[0][0] * N[0] + self.net.A[0][1] * N[1] + self.net.A[0][2] * N[2] + self.net.A[0][3] * N[3])
+        # result1[1] = N[1] * (self.net.m + self.net.A[1][0] * N[0] + self.net.A[1][1] * N[1] + self.net.A[1][2] * N[2] + self.net.A[1][3] * N[3])
+        # result1[2] = N[2] * (self.net.m + self.net.A[2][0] * N[0] + self.net.A[2][1] * N[1] + self.net.A[2][2] * N[2] + self.net.A[2][3] * N[3])
+        # result1[3] = N[3] * (self.net.m + self.net.A[3][0] * N[0] + self.net.A[3][1] * N[1] + self.net.A[3][2] * N[2] + self.net.A[3][3] * N[3])
 
         return result1
 
@@ -51,9 +63,10 @@ class Computer:
         self.net.initcompute()
 
         solver = sp.integrate.RK45(self.odeMougi, t0=0, y0=self.net.N0, t_bound=self.net.dt * self.net.maxIter,
-                                   first_step=10*self.net.dt, max_step=2*self.net.dt)
+                                   max_step=self.net.dt)
 
         last_N = self.net.N0
+        slope_100step = [np.zeros(shape=self.net.S * self.net.n) for i in range(100)]
         for i in range(int(self.net.maxIter)):
             if self.net.method_alpha == NetParam.method_alpha.value[0]:
                 self.net.curN = solver.y[: self.net.S * self.net.n]
@@ -63,30 +76,45 @@ class Computer:
 
             if i % 2 == 0:
                 if self.net.record:
-                    self.net.iter_lst.append(solver.t / self.net.dt)
+                    # self.net.iter_lst.append(solver.t / self.net.dt)
+                    self.net.iter_lst.append(i)
                     self.net.N_lst.append(self.net.curN.reshape(1, -1))
                     self.net.Alpha_lst.append(self.net.curAlpha.reshape(1, -1))
                     self.net.G_lst.append(self.net.G.reshape(1, -1))
                     self.net.avgG_lst.append(self.net.avgG.reshape(1, -1))
+                    self.net.Np_lst.append(self.net.curN[0::self.net.S].reshape(1, -1))
 
             solver.step()
 
-            if i % 1000 == 0:
-                print(i)
+            # if i % 1000 == 0:
+            #     print(i)
 
             if (sum(self.net.curN <= 1e-4) > 0) | (sum(self.net.curAlpha < 0) > 0):
                 # print(i)
+                # self.net.curN[self.net.curN <= 1e-4] = 0
                 self.net.pst = False
-                break
+                # break
 
+            slope_100step[i % 100] = abs(self.odeMougi(N=self.net.curN))
             if (i % 100 == 0) and (i != 0):
-                rtol = abs(self.net.curN - last_N) / last_N
+                # relevant tolerance, 1e-8 is to avoid ZeroDivisionError
+                # rtol = abs(self.net.curN - last_N) / (last_N + 1e-8)
+                # rtol = abs(self.net.curN - last_N) / last_N
+                # print('rtol:', rtol)
+                # print('lastN:', last_N)
+                # print('curN:', self.net.curN)
                 # if all the relevant tolerance < 1e-4, regard the system as stable
-                if sum(rtol >= 1e-4) == 0:
-                    self.net.stable = True
-                    break
+                # if sum(rtol >= 1e-4) == 0:
+                #     self.net.stable = True
+                #     break
                 # if not stable, update last_N
                 last_N = self.net.curN
+
+                if np.all(sum(slope_100step) / 100 < 1e-4):
+                    self.net.stable = True
+                    break
+                else:
+                    print(sum(slope_100step) / 100)
 
             if solver.status == 'finished':
                 self.net.stable = True
@@ -94,15 +122,19 @@ class Computer:
 
             if solver.status == 'failed':
                 self.net.stable, self.net.pst = False, False
-                return
+                break
 
         self.net.N_f, self.net.Alpha_f = self.net.curN, self.net.curAlpha
 
+        print(self.odeMougi(N=self.net.N_f) / self.net.N_f)
+        print('N_f:', self.net.N_f)
+        print('iter:', i)
+        print('status', solver.status)
         print('persistence:', self.net.pst)
         print('stable:', self.net.stable)
 
-        plt.plot(range(len(self.slope)), self.slope)
-        plt.show()
+        # plt.plot(range(len(self.slope)), self.slope)
+        # plt.show()
 
     def analysis(self):
         """
@@ -166,14 +198,97 @@ class Computer:
 
         if theory:
             J = J3 + self.net.d * (J1 + J2)
+            # J = J3
             eigval = np.linalg.eigvals(J)
             self.net.maxTheoryEigvals.append(max(eigval.real))
         else:
             self.net.J = J3 + self.net.d * (J1 + J2)
+            # self.net.J = J3
             self.net.eigval = np.linalg.eigvals(self.net.J)
             self.net.maxEigval = max(self.net.eigval.real)
             self.net.maxFactEigvals.append(max(self.net.eigval.real))
             self.net.fixpt.append(Nf)
+
+    def odeMougi_fsole(self, N):
+        return self.odeMougi(t=0, N=N)
+
+    def searchTheoryPoint(self, N_guess):
+        print('start search')
+        # root = sp.optimize.fsolve(self.odeMougi_fsole, N_guess, maxfev=int(1e6))
+        root = sp.optimize.least_squares(self.odeMougi_fsole, N_guess, bounds=(0, np.inf))
+        print('search end')
+        return root
+
+    def theoryPoint(self):
+        procs = 10
+        x0 = [np.random.random(size=self.net.S * self.net.n) * 10 for i in range(procs)]
+        # x0 = [np.random.normal(1, 0.3, size=self.S * self.n) for i in range(procs)]
+        x0.append(self.net.N_f)
+        # x0 = []
+        x0.append(self.net.N0)
+        # print(x0)
+
+        pool = mp.Pool(min(10, procs))
+        results = pool.map(self.searchTheoryPoint, x0)
+        realx0 = []
+        np.set_printoptions(precision=2, linewidth=1000000)
+        for id, root in enumerate(results):
+            root = root.x
+            dNdt = self.odeMougi_fsole(root)
+            dist = np.linalg.norm(dNdt)
+            print('root:', root)
+            print('dNdt:', dNdt)
+            print('dist:', dist)
+            if dist > 1e-4:
+                print('far')
+                continue
+            if sum(root < 0) > 0:
+                print('nega')
+                continue
+
+            if len(self.net.theoryPoints) == 0:
+                print('abc')
+                realx0.append(x0[id])
+                self.net.theoryPoints.append(root)
+
+            for item in self.net.theoryPoints:
+                if np.linalg.norm(root - item) <= 1e-4:
+                    break
+            else:
+                realx0.append(x0[id])
+                self.net.theoryPoints.append(root)
+
+        print('theoryPoints:')
+        for theoryPoint in self.net.theoryPoints:
+            print(theoryPoint)
+            self.Jacobian(theoryPoint, self.calcAlpha(theoryPoint), theory=True)
+
+        # for id, iv in enumerate(x0):
+        #     self.N0 = iv
+        #     # print(self.N0)
+        #     self.findFixed(method_ode=self.method_ode)
+        #     self.errors.append(sum(abs(self.N_f - self.theoryPoints[id])))
+        #     if self.pst and self.stable:
+        #         self.Jacobian(self.N_f, self.Alpha_f)
+        # print('errors')
+        # for item in self.fixpt:
+        #     print(sum(abs(item - self.fixpt[0])))
+
+        # for tp in self.theoryPoints:
+        #     # self.N0 = tp + np.random.normal(0, 0.1, size=self.S * self.n)
+        #     self.N0 = tp
+        #     # print(self.N0)
+        #     self.findFixed(method_ode=self.method_ode)
+        #     if self.pst and self.stable:
+        #         self.Jacobian(self.N_f, self.Alpha_f)
+        #     # self.plotNandAlpha()
+        #     # plt.show()
+
+        # self.theoryPoint(x0, procs)
+        # # print(self.theoryPoints)
+        # for theoryPoint in self.theoryPoints:
+        #     self.Jacobian(theoryPoint, self.calcAlpha(theoryPoint), theory=True)
+
 
     def compute(self):
         """
@@ -181,7 +296,8 @@ class Computer:
         :return:
         """
         self.findFixed()
+        self.theoryPoint()
+        self.Jacobian(self.net.N_f, self.net.Alpha_f)
         if self.net.record:
-            self.Jacobian(self.net.N_f, self.net.Alpha_f)
             self.analysis()
 

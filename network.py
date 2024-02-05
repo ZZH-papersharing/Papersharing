@@ -1,5 +1,5 @@
 from enum import Enum
-
+import networkx as nx
 import numpy as np
 import scipy as sp
 from matplotlib import pyplot as plt
@@ -87,13 +87,13 @@ class RandomNetwork:
 
         self.method_alpha = config[NetParam.method_alpha]
         self.method_ode = config[NetParam.method_ode]
-        self.dt = config[NetParam.dt]  # time interval
+        # self.dt = config[NetParam.dt]  # time interval
 
         p = max(1, np.log10(self.d) + 1)
         if self.kappa >= critical(self.d):
             p += 1
         self.dt = 1 / 10 ** np.ceil(p)
-        print(self.dt)
+        # print(self.dt)
 
         self.maxIter = config[NetParam.maxIteration]  # max iteration time
         self.maxError = config[NetParam.maxError]  # max error in iteration
@@ -117,10 +117,12 @@ class RandomNetwork:
         self.pst, self.stable = True, False
 
         self.iter_lst, self.N_lst, self.Alpha_lst, self.G_lst, self.avgG_lst = [], [], [], [], []
+        self.Np_lst = []
         self.iter = 0
         self.sumslope = np.zeros(self.S * self.n)
         self.slopes = []
 
+        self.strongly_connected = True
         self.spawn()
 
     def spawn(self):
@@ -133,6 +135,7 @@ class RandomNetwork:
         """
         self._spawn_A(mode=1)
         # print('A:', self.A)
+        print(np.linalg.eigvals(self.A))
 
         # use 1-D matrix
         self.miu_alpha = 1 / self.n
@@ -148,6 +151,7 @@ class RandomNetwork:
             self.M = self.m * np.ones(self.S * self.n)
             if self.N0 is None:
                 self.N0 = self.n0 * np.ones(self.S * self.n)
+                # self.N0 = np.random.normal(1, 0.01, size=self.S * self.n)
             if self.Alpha0 is None:
                 self.Alpha0 = self.alpha0 * np.ones(self.S * self.n * self.n)
 
@@ -164,13 +168,13 @@ class RandomNetwork:
         :return:
         """
 
-        if mode == 1:
-            self.sgm_qx = self.sgm_aij * np.sqrt(1 / self.rho - 1)
-            lmd = 1 / np.sqrt(1 + (self.sgm_qx / self.sgm_aij) ** 2)
-            self.n_e = self.n / (1 + (self.n - 1) * self.rho)
-            self.left1 = self.sgm_aij * np.sqrt(self.c * (self.S - 1))
-            self.left2 = self.sgm_aij * np.sqrt(self.c * (self.S - 1) / self.n_e)
+        self.sgm_qx = self.sgm_aij * np.sqrt(1 / self.rho - 1)
+        lmd = 1 / np.sqrt(1 + (self.sgm_qx / self.sgm_aij) ** 2)
+        self.n_e = self.n / (1 + (self.n - 1) * self.rho)
+        self.left1 = self.sgm_aij * np.sqrt(self.c * (self.S - 1))
+        self.left2 = self.sgm_aij * np.sqrt(self.c * (self.S - 1) / self.n_e)
 
+        if mode == 1:
             # original version, all randomized
             W_std = np.random.normal(0, self.sgm_aij, size=(self.S, self.S))
             Connect = np.random.binomial(1, self.c, size=(self.S, self.S))
@@ -225,13 +229,12 @@ class RandomNetwork:
 
             self.Ax_lst = [Connect * Wx for Wx in W_lst]
             self.Ax_lst = [Ax - np.diag(np.diag(Ax) + self.Adiag) for Ax in self.Ax_lst]
-            # for i in range(self.n):
-            #     offset = np.random.normal(0, self.sgm_qx, size=(self.S, self.S))
-            #     Wx = (W_std + offset) * lmd
-            #     Ax = np.multiply(Wx, Connect)
-            #     Ax -= np.diag(np.diag(Ax) + self.Adiag)
-            #
-            #     self.Ax_lst.append(Ax)
+
+            # check connectivity
+            for Ax in self.Ax_lst:
+                G = nx.from_numpy_array(Ax, create_using=nx.DiGraph)
+                if not nx.is_strongly_connected(G):
+                    self.strongly_connected = False
 
             self.A = sp.linalg.block_diag(*self.Ax_lst)
             # print(self.A.shape)
@@ -239,22 +242,45 @@ class RandomNetwork:
 
         # food web, but wasn't updated for versions
         elif mode == 2:
-            A_std = -1 * np.identity(self.S)
+            A_std = np.zeros(shape=(self.S, self.S))
             for i in range(self.S):
                 for j in range(self.S):
                     if i < j:
                         if np.random.random() < self.c:
-                            A_std[i, j] = np.random.normal(0, self.sgm_alpha) / 5
+                            A_std[i, j] = np.random.normal(0, self.sgm_aij)
                     elif i > j:
-                        A_std[i, j] = -A_std[j, i]
+                        if A_std[j, i] >= 0:
+                            A_std[i, j] = -A_std[j, i] / 0.2
+                        else:
+                            A_std[i, j] = -A_std[j, i] * 0.2
 
-            lst_A = []
-            for i in range(self.n):
-                same = np.random.normal(1, self.sgm_qx, size=(self.S, self.S))
-                lst_A.append(np.multiply(same, A_std))
-                # lst_A.append(A_std)
+            offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            self.Ax_lst = [(A_std + offset) * lmd for offset in offsets]
+            self.Ax_lst = [Ax - np.diag(np.diag(Ax) + self.Adiag) for Ax in self.Ax_lst]
 
-            self.A = sp.linalg.block_diag(*lst_A)
+            # check connectivity
+            for Ax in self.Ax_lst:
+                G = nx.from_numpy_array(Ax, create_using=nx.DiGraph)
+                if not nx.is_strongly_connected(G):
+                    self.strongly_connected = False
+
+            self.A = sp.linalg.block_diag(*self.Ax_lst)
+
+        # competitive web
+        elif mode == 3:
+            A_std = np.random.uniform(-1.28, 0, size=(self.S, self.S))
+
+            offsets = [np.random.normal(0, self.sgm_qx, size=(self.S, self.S)) for i in range(self.n)]
+            self.Ax_lst = [(A_std + offset) * lmd for offset in offsets]
+            self.Ax_lst = [Ax - np.diag(np.diag(Ax) + self.Adiag) for Ax in self.Ax_lst]
+
+            # check connectivity
+            for Ax in self.Ax_lst:
+                G = nx.from_numpy_array(Ax, create_using=nx.DiGraph)
+                if not nx.is_strongly_connected(G):
+                    self.strongly_connected = False
+
+            self.A = sp.linalg.block_diag(*self.Ax_lst)
 
     def initcompute(self):
         self.pst, self.stable = True, False
@@ -325,6 +351,7 @@ class RandomNetwork:
         axs[0][0].set_title(f'Number of species vs. iteration times')
         axs[0][0].set_xlabel('iteration')
         axs[0][0].set_ylabel('N')
+        # axs[0][0].set_yscale('log')
 
         axs[0][1].scatter(range(len(self.maxTheoryEigvals)), self.maxTheoryEigvals)
         axs[0][1].set_title(r'maxTheoryEigvals')
@@ -337,28 +364,47 @@ class RandomNetwork:
         axs[1][0].set_ylabel(r'$\alpha$')
 
         axs[1][1].plot(self.iter_lst, np.concatenate(self.G_lst, axis=0))
-        axs[1][1].set_title(r'G vs. iteration times')
+        axs[1][1].set_title(r'dN/dt vs. iteration times')
         axs[1][1].set_xlabel('iteration')
-        axs[1][1].set_ylabel(r'G')
+        # axs[1][1].set_ylabel(r'G')
 
     def plotHist_N(self):
         """
         Plot the histogram of $N_{0}, N_{f}$
         :return:
         """
+        # fig: plt.Figure = plt.figure()
+        # axs: list[plt.Axes] = fig.subplots(1, 2)
+        # fig.suptitle(r'histogram of $N_{0}, N_{f}$')
+        # # index = range(0, self.S * self.n, self.S)
+        # # minN = min(np.min(self.N0), np.min(self.N_f))
+        # # maxN = max(np.max(self.N0), np.max(self.N_f))
+        # minN = np.min(self.N_f)
+        # maxN = np.max(self.N_f)
+        # ran = (minN * 0.9, maxN * 1.1)
+        # bins = np.logspace(np.log10(ran[0]), np.log10(ran[-1]), num=15)
+        # _ = axs[0].hist(self.N0, range=ran, bins=20, weights=None)
+        # _ = axs[1].hist(self.N_f, range=ran, bins=bins, weights=None, rwidth=0.8)
+        # axs[0].set_xlabel(r'$N_{0}$')
+        # axs[1].set_xlabel(r'$N_{f}$')
+        # axs[0].set_ylabel('Count')
+        # axs[1].set_ylabel('Count')
+        # axs[1].set_xscale('log')
+
         fig: plt.Figure = plt.figure()
-        axs: list[plt.Axes] = fig.subplots(1, 2)
-        fig.suptitle(r'histogram of $N_{0}, N_{f}$')
+        ax: plt.Axes = fig.subplots(1, 1)
+        fig.suptitle(r'histogram of $N_{f}$')
         # index = range(0, self.S * self.n, self.S)
-        minN = min(np.min(self.N0), np.min(self.N_f))
-        maxN = max(np.max(self.N0), np.max(self.N_f))
+        # minN = min(np.min(self.N0), np.min(self.N_f))
+        # maxN = max(np.max(self.N0), np.max(self.N_f))
+        minN = np.min(self.N_f)
+        maxN = np.max(self.N_f)
         ran = (minN * 0.9, maxN * 1.1)
-        _ = axs[0].hist(self.N0, range=ran, bins=20, weights=None)
-        _ = axs[1].hist(self.N_f, range=ran, bins=20, weights=None)
-        axs[0].set_xlabel(r'$N_{0}$')
-        axs[1].set_xlabel(r'$N_{f}$')
-        axs[0].set_ylabel('Count')
-        axs[1].set_ylabel('Count')
+        bins = np.logspace(np.log10(ran[0]), np.log10(ran[-1]), num=15)
+        _ = ax.hist(self.N_f, range=ran, bins=bins, weights=None, rwidth=0.8)
+        ax.set_xlabel(r'$N_{f}$')
+        ax.set_ylabel('Count')
+        ax.set_xscale('log')
 
     def plotHist_Afa(self):
         """
@@ -472,5 +518,10 @@ class RandomNetwork:
             for i in range(self.S):
                 self.plotFlow(idx=i)
                 plt.show()
+
+        fig: plt.Figure = plt.figure()
+        ax: plt.Axes = fig.subplots(1, 1)
+        ax.plot(self.iter_lst, np.concatenate(self.Np_lst, axis=0))
+        ax.set_xlabel('iteration')
 
         plt.show()

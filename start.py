@@ -1,9 +1,12 @@
 import multiprocessing as mp
 import os
+import pickle
 import time
 import warnings
 from tkinter import filedialog
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from compute import *
@@ -14,11 +17,11 @@ class NetworkManager:
     This class works as an interface to compute networks.
     """
 
-    def __init__(self, species=40, patches=5, randomSeed=81, weightSeed=0, record=True,
-                 initial='random', growth=5, n0=5, alpha0=0.2, N0=None, Alpha0=None,
+    def __init__(self, species=10, patches=1, randomSeed=0, weightSeed=5, record=True,
+                 initial='random', growth=1, n0=0.1, alpha0=0.2, N0=None, Alpha0=None,
                  miu_n0=1, sgm_n0=0.2, miu_alpha=0.5, sgm_alpha=0.01, scr=0,
-                 connectance=0.6, sgm_aij=0.1, sgm_qx=10, rho=0.5, Adiag=1, dispersal=10, kappa=2,
-                 method_ode=2, method_alpha='Softmax', dt=1e-3, maxIteration=100e4, maxError=1e-4,
+                 connectance=1, sgm_aij=1, sgm_qx=10, rho=1, Adiag=1, dispersal=0, kappa=0,
+                 method_ode=2, method_alpha='Softmax', dt=1e-3, maxIteration=5e4, maxError=1e-4,
                  ini_dpd=False, runtime=0,
                  ):
         """
@@ -90,10 +93,11 @@ class NetworkManager:
         :return:
         """
         self.net = RandomNetwork(self.config)
+        print(f'sgm{self.config[NetParam.sgm_aij]}seed{self.config[NetParam.randomSeed]}: {self.net.strongly_connected}')
         cpt = Computer(self.net)
         cpt.compute()
         if self.config[NetParam.record]:
-            self.net.plotAll()
+            self.net.plotAll(histN=True)
 
     def changeW(self, wseeds, research):
         directory = f"./log/sweep/LinearStability/{research}/"
@@ -264,39 +268,44 @@ class NetworkManager:
             pst_df_vs_kpa.index, pst_df_vs_kpa.columns = kpa_lst, map(lambda x: f'd={x}', d_lst)
             pst_df_vs_kpa.to_excel(writer, sheet_name='Average_vs_kpa')
 
-    def for_pst_parallel(self, seed):
-        if self.randos[0]:
+    def for_pst_parallel(self, pack):
+        seed, randos, path = pack[0], pack[1], pack[2]
+        if randos[0]:
             np.random.seed(seed)
             self.config[NetParam.randomSeed] = seed
 
-        if self.randos[1]:
+        if randos[1]:
             m = np.random.uniform(0, 10)
             self.config[NetParam.growth] = m
             self.config[NetParam.n0] = m
 
-        if self.randos[2]:
+        if randos[2]:
             sgm_aij = np.random.uniform(0.01, 0.2)
             self.config[NetParam.sgm_aij] = sgm_aij
 
-        if self.randos[3]:
-            c = np.random.uniform(0, 1)
+        if randos[3]:
+            c = np.random.uniform(0.3, 0.6)
             self.config[NetParam.connectance] = c
 
         warnings.filterwarnings('error')
         start = time.time()
         try:
             self.computeNet()
+            to_file = self.net.N_f
             if self.net.pst:
                 pst = 1
             else:
                 pst = 0
         except (RuntimeWarning, Exception):
+            to_file = 'Error'
             pst = 2
         end = time.time()
+        with open(path, 'wb') as f:
+            pickle.dump(to_file, f, pickle.HIGHEST_PROTOCOL)
         return pst, round(end - start, 2)
 
     def persistence_parallel(self, seeds, randos: list, kpa_lst=[], d_lst=[]):
-        self.randos = randos
+        # self.randos = randos
         research, allrando = '', ['seed,', 'm,', 'sgm,', 'c,']
         for i in range(len(randos)):
             if randos[i]:
@@ -305,7 +314,8 @@ class NetworkManager:
         directory = f"./log/sweep/persistence/{research}/"
         directory += (f'S{self.config[NetParam.species]}n{self.config[NetParam.patches]}'
                       f'c{self.config[NetParam.connectance]}rho{self.config[NetParam.rho]}'
-                      f'sgm{self.config[NetParam.sgm_aij]},{seeds}seeds')
+                      f'sgm{self.config[NetParam.sgm_aij]}'
+                      f'm{self.config[NetParam.growth]},{seeds}seeds')
         print(directory)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -323,17 +333,25 @@ class NetworkManager:
         pst_data = []
         self.config[NetParam.record] = False
         for d in d_lst:
+            self.config[NetParam.dispersal] = d
             print('d:', d)
+
             detail_at_d = []
             time_at_d = []
             pst_at_d = []
-            self.config[NetParam.dispersal] = d
             for kpa in kpa_lst:
-                print('kpa:', kpa)
                 self.config[NetParam.kappa] = kpa
+                print('kpa:', kpa)
+
+                if not os.path.exists(directory + f'/d{d}/kpa{kpa}'):
+                    os.makedirs(directory + f'/d{d}/kpa{kpa}')
+
+                # sdlst = range(seeds)
+                sdlst = [3, 33, 35, 45, 46, 47, 48, 49, 50, 51, 52, 53, 55, 57, 60, 61, 62, 63, 64, 65, 66, 67, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+                to_map = [(seed, randos, directory + f'/d{d}/kpa{kpa}/seed{seed}Nf.bin') for seed in sdlst]
 
                 pool = mp.Pool(16)
-                result_lst = pool.map(self.for_pst_parallel, range(seeds))
+                result_lst = pool.map(self.for_pst_parallel, to_map)
                 pst_lst = [item[0] for item in result_lst]
                 time_lst = [item[1] for item in result_lst]
 
@@ -361,6 +379,36 @@ class NetworkManager:
             pst_df_vs_kpa.index, pst_df_vs_kpa.columns = kpa_lst, map(lambda x: f'd={x}', d_lst)
             pst_df_vs_kpa.to_excel(writer, sheet_name='Average_vs_kpa')
 
+    def eigen_vs_sgm(self):
+        directory = f"./log/sweep/eigen_vs_sgm"
+        print(directory)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # sgm_lst = np.linspace(0.1, 0.4, 10)
+        sgm_lst = [0.01, 0.05, 0.1, 0.15, 0.2]
+        seed_lst = list(range(0, 10))
+        eigen_df = pd.DataFrame(np.zeros(shape=(len(sgm_lst), len(seed_lst))),
+                                index=sgm_lst, columns=map(lambda x: f'seed{x}', seed_lst))
+        self.config[NetParam.record] = False
+        for seed in seed_lst:
+            self.config[NetParam.randomSeed] = seed
+            for sgm in sgm_lst:
+                self.config[NetParam.sgm_aij] = sgm
+                self.computeNet()
+
+                path = f'{directory}/sgm{sgm}seed{seed}.bin'
+                with open(path, 'wb') as f:
+                    pickle.dump(self.net, f, pickle.HIGHEST_PROTOCOL)
+
+                eigen_df.loc[sgm, f'seed{seed}'] = self.net.maxEigval
+
+        eigen_df.plot(marker='.')
+        plt.xlabel(r'$\sigma_a$')
+        plt.title(r'Leading Eigen Value vs. $\sigma_a$')
+
+        plt.show()
+
 
 if __name__ == '__main__':
     net_manager = NetworkManager()
@@ -378,15 +426,18 @@ if __name__ == '__main__':
     # net_manager = NetworkManager(rho=0.1)
     # net_manager.persistence_parallel(10, randos=[1, 0, 0, 0])
 
-    # net_manager = NetworkManager(species=40, patches=5, connectance=0.6, rho=0.1, sgm_aij=0.1)
-    # net_manager.persistence_parallel(100, randos=[1, 0, 0, 0],
-    #                                  kpa_lst=[0, 1, 2, 3, 5, 8, 12, 15], d_lst=[0.001, 0.01, 0.1, 1, 10, 100])
-    # net_manager = NetworkManager(species=40, patches=5, connectance=0.6, rho=0.5, sgm_aij=0.1)
-    # net_manager.persistence_parallel(100, randos=[1, 0, 0, 0],
-    #                                  kpa_lst=[0, 1, 2, 3, 5, 8, 12, 15], d_lst=[0.001, 0.01, 0.1, 1, 10, 100])
+    # net_manager = NetworkManager(species=40, patches=1, connectance=0.6, rho=1, dispersal=0, kappa=0)
+    # net_manager.eigen_vs_sgm()
+
     # net_manager = NetworkManager(species=40, patches=5, connectance=0.6, rho=0.9, sgm_aij=0.1)
     # net_manager.persistence_parallel(100, randos=[1, 0, 0, 0],
-    #                                  kpa_lst=[0, 1, 2, 3, 5, 8, 12, 15], d_lst=[0.001, 0.01, 0.1, 1, 10, 100])
+    #                                  kpa_lst=[2], d_lst=[10])
+    # net_manager = NetworkManager(species=40, patches=5, connectance=0.5, rho=0.9, sgm_aij=0.1)
+    # net_manager.persistence_parallel(100, randos=[1, 1, 1, 0],
+    #                                  kpa_lst=[0, 1, 2, 3, 5, 8, 12, 15], d_lst=[0.1, 1, 10])
+    # net_manager = NetworkManager(species=40, patches=5, connectance=0.6, rho=0.9, sgm_aij=0.05)
+    # net_manager.persistence_parallel(100, randos=[1, 0, 0, 0],
+    #                                  kpa_lst=[0, 1, 2, 3, 5, 8, 12, 15], d_lst=[1])
 
     #
     # net_manager = NetworkManager(rho=0.1)
